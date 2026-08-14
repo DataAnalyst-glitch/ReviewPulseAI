@@ -9,7 +9,7 @@
 
 ## For developers
 
-Status: **Module 1 (Data Ingestion) only.** Modules 2–4 (RAG, agentic analysis, dashboards/PDF) are not built yet — see `CLAUDE.md` for the full build plan.
+Status: **Modules 1–2 (Data Ingestion, RAG/Vector Storage).** Modules 3–4 (agentic analysis, dashboards/PDF) are not built yet — see `CLAUDE.md` for the full build plan.
 
 ### Setup
 
@@ -38,6 +38,22 @@ CSV input requirements: one column with the review text (`review_text`, `review`
 
 Cleaned output is capped to 30–50 reviews per product and saved to `data/raw/` (git-ignored, regenerated per run). Logs go to `logs/app.log`.
 
+### Module 2 — RAG / Vector Storage
+
+Backed by a **local Chroma store** (`data/vector_store/`, git-ignored) instead of Supabase pgvector — Supabase setup is deferred. Both are accessed as a LangChain vector store, so swapping the backend later is a change to `src/rag/vector_store.py` only. Embeddings come from a local, free HuggingFace model (`sentence-transformers/all-MiniLM-L6-v2`) — no API key, no rate limits.
+
+```python
+from src.ingestion import ingest_reviews
+from src.rag import index_reviews, retrieve_relevant_chunks
+
+reviews = ingest_reviews("DEMO-EARBUDS-A", csv_path="data/sample_reviews/DEMO-EARBUDS-A.csv")
+index_reviews(reviews)
+
+chunks = retrieve_relevant_chunks("battery draining fast", product_id="DEMO-EARBUDS-A", k=3)
+```
+
+Each indexed chunk's metadata carries the full original review text (`original_review_text`) and a stable `review_id` — Module 3's pain-point agent will need to cite back to the exact source review as a hallucination guardrail (brief Section 5.4). Re-indexing the same reviews is a safe no-op (chunk ids are deterministic).
+
 ### Tests
 
 ```bash
@@ -48,8 +64,10 @@ pytest
 
 ```
 src/ingestion/     Module 1 — csv_loader, api_client, schema, orchestrator
+src/rag/           Module 2 — chunking, embeddings, vector_store, orchestrator
 src/utils/         logging_config
 data/sample_reviews/  bundled demo CSVs (2 fictional products, for testing/fallback)
 data/raw/          cleaned output per ingestion run (git-ignored)
+data/vector_store/ local Chroma index (git-ignored)
 tests/             pytest suite
 ```

@@ -4,8 +4,15 @@ python-dotenv>=1.0
 requests>=2.31
 pytest>=8.0
 
+# --- Module 2: RAG / Vector Storage ---
+langchain-core>=0.2
+langchain-text-splitters>=0.2
+langchain-chroma>=0.1
+langchain-huggingface>=0.0.3
+sentence-transformers>=2.7
+chromadb>=0.5
+
 # --- Added in later modules (uncomment as we build them) ---
-# langchain>=0.2
 # crewai>=0.30
 # google-generativeai>=0.5
 # supabase>=2.4
