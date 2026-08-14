@@ -80,12 +80,18 @@ _COLUMN_MIGRATIONS = [
 
 
 def _migrate_schema(conn: sqlite3.Connection) -> None:
+    # Unconditional ALTER + swallow "duplicate column", rather than a
+    # PRAGMA table_info() pre-check — simpler and can't be wrong about
+    # whether the column already exists, whatever the reason a pre-check
+    # might disagree with the ALTER itself in some environment.
     for table, column, coltype in _COLUMN_MIGRATIONS:
-        existing_columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-        if column not in existing_columns:
+        try:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
+            conn.commit()
             logger.info("Migrated schema: added %s.%s", table, column)
-    conn.commit()
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
 
 
 def get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
