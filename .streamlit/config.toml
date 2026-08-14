@@ -1,0 +1,10 @@
+# fileWatcherType="none" avoids Streamlit's dev-mode watcher scanning every
+# installed package for hot-reload paths on startup — sentence-transformers
+# pulls in `transformers`, which lazily probes torchvision (not installed)
+# and floods startup logs with ~100 harmless-but-noisy tracebacks, slowing
+# cold start. Not needed in a deployed app anyway (no live source editing).
+[server]
+fileWatcherType = "none"
+
+[theme]
+base = "light"
