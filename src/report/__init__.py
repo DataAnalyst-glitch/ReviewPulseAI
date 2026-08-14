@@ -28,6 +28,20 @@ class ComparisonReport:
     gap_opportunities: List[dict]
 
 
+def disclaimer_text(review_count: int) -> str:
+    """
+    Trust/accuracy disclaimer shown on both the Streamlit results page and
+    the PDF footer — one source of wording so the two surfaces can't drift.
+    Short and professional, not alarming: sets accurate expectations about
+    what this analysis is (and isn't) without undermining confidence in it.
+    """
+    return (
+        f"This analysis is based on customer review text only ({review_count} reviews analyzed) "
+        "and does not incorporate sales volume, pricing, or market trend data. "
+        "Use alongside your own business judgment and other data sources."
+    )
+
+
 def build_product_report(product_id: str) -> ProductReport:
     sentiment = get_product_sentiment(product_id)
     pain_points = get_pain_points(product_id)

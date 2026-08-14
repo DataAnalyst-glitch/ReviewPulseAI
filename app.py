@@ -20,7 +20,7 @@ import streamlit.components.v1 as components
 from src.analysis import AnalysisError, analyze_product, compare_products
 from src.ingestion import IngestionError, ingest_reviews
 from src.rag import RAGError, index_reviews
-from src.report import build_comparison_report
+from src.report import build_comparison_report, disclaimer_text
 from src.report.pdf_generator import generate_pdf_report
 from src.report.voice_summary import build_voice_summary
 
@@ -356,6 +356,7 @@ if main.is_demo_data:
     st.info(f"**{main.product_id}** is bundled demo data — not live-scraped reviews.")
 
 st.header(f"Results — {main.product_id}")
+st.caption(disclaimer_text(main.total_reviews))
 
 positive_pct = (main.sentiment_counts.get("Positive", 0) / main.total_reviews * 100) if main.total_reviews else 0
 metric_cols = st.columns(4)

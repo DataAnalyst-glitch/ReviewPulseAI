@@ -5,7 +5,7 @@ import pytest
 from src.analysis.schemas import GapOpportunity, GapOpportunityBatch, PainPoint, SentimentBatch, SentimentResult
 from src.analysis.storage import save_gap_opportunities, save_pain_points, save_sentiment_results
 from src.ingestion.schema import Review
-from src.report import ComparisonReport, ProductReport, build_comparison_report, build_product_report
+from src.report import ComparisonReport, ProductReport, build_comparison_report, build_product_report, disclaimer_text
 from src.report.pdf_generator import generate_pdf_report
 from src.report.voice_summary import build_voice_summary
 
@@ -145,6 +145,17 @@ def test_generate_pdf_report_renders_recommendations(monkeypatch, tmp_path):
     assert "Executive Summary" in text
     assert "quick summary for MAIN" in text
     assert "50 percent positive, 50 percent negative" in text
+    # Trust/accuracy disclaimer must appear on every page's footer.
+    assert "customer review text only" in text
+    assert "does not incorporate sales volume, pricing, or market trend data" in text
+
+
+def test_disclaimer_text_includes_review_count():
+    text = disclaimer_text(42)
+
+    assert "42 reviews analyzed" in text
+    assert "sales volume, pricing, or market trend data" in text
+    assert "business judgment" in text
 
 
 def test_generate_pdf_report_handles_no_competitors(monkeypatch, tmp_path):

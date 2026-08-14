@@ -16,7 +16,7 @@ from typing import Tuple
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
 
-from src.report import ComparisonReport, ProductReport
+from src.report import ComparisonReport, ProductReport, disclaimer_text
 from src.report.voice_summary import build_voice_summary
 
 COLOR_GOOD = (12, 163, 12)  # status: good — #0ca30c
@@ -36,6 +36,11 @@ CONTENT_WIDTH_MM = PAGE_WIDTH_MM - 2 * MARGIN_MM
 
 
 class ReportPDF(FPDF):
+    # Set by generate_pdf_report() right after construction so footer() -
+    # called automatically by fpdf on every page - can render the
+    # trust/accuracy disclaimer with the right review count.
+    disclaimer: str = ""
+
     def header(self) -> None:
         self.set_font("Helvetica", "B", 16)
         self.set_text_color(*COLOR_PRIMARY_INK)
@@ -45,7 +50,12 @@ class ReportPDF(FPDF):
         self.ln(4)
 
     def footer(self) -> None:
-        self.set_y(-15)
+        self.set_y(-20)
+        if self.disclaimer:
+            self.set_font("Helvetica", "I", 7)
+            self.set_text_color(*COLOR_SECONDARY_INK)
+            self.multi_cell(0, 3.5, self.disclaimer, align="C")
+        self.set_y(-11)
         self.set_font("Helvetica", "I", 8)
         self.set_text_color(*COLOR_SECONDARY_INK)
         self.cell(0, 10, f"Page {self.page_no()}", align="C")
@@ -192,7 +202,8 @@ def _executive_summary_section(pdf: FPDF, report: ComparisonReport) -> None:
 
 def generate_pdf_report(report: ComparisonReport) -> bytes:
     pdf = ReportPDF(orientation="P", unit="mm", format="A4")
-    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.disclaimer = disclaimer_text(report.main.total_reviews)
+    pdf.set_auto_page_break(auto=True, margin=20)
     pdf.set_margins(MARGIN_MM, MARGIN_MM, MARGIN_MM)
     pdf.add_page()
 
