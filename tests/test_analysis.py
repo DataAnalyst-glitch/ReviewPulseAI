@@ -6,6 +6,7 @@ from src.analysis.guardrail import verify_pain_points
 from src.analysis.schemas import GapOpportunity, GapOpportunityBatch, PainPoint, SentimentBatch, SentimentResult
 from src.analysis.storage import (
     get_connection,
+    get_gap_opportunities,
     get_pain_points,
     log_llm_usage,
     save_gap_opportunities,
@@ -63,6 +64,7 @@ def test_storage_round_trip(tmp_path):
             supporting_quotes=["too large"],
             verified_quote_count=1,
             needs_manual_review=False,
+            recommended_action="Add a size chart and an extra-small ear tip to the box.",
         )
     ]
     save_pain_points("P1", pain_points, conn=conn)
@@ -70,6 +72,7 @@ def test_storage_round_trip(tmp_path):
     assert len(stored) == 1
     assert stored[0]["pain_point"] == "Fit"
     assert stored[0]["supporting_quotes"] == ["too large"]
+    assert stored[0]["recommended_action"] == "Add a size chart and an extra-small ear tip to the box."
 
     gap_batch = GapOpportunityBatch(
         opportunities=[
@@ -78,11 +81,14 @@ def test_storage_round_trip(tmp_path):
                 competitor_pain_point="Bad mic",
                 opportunity="Highlight superior call quality",
                 rationale="P1 has no mic complaints",
+                recommended_action="Add 'crystal-clear calls' to bullet #2 and the main image.",
             )
         ]
     )
     save_gap_opportunities("P1", gap_batch, conn=conn)
-    assert conn.execute("SELECT COUNT(*) FROM gap_opportunities WHERE main_product_id = 'P1'").fetchone()[0] == 1
+    gap_rows = get_gap_opportunities("P1", conn=conn)
+    assert len(gap_rows) == 1
+    assert gap_rows[0]["recommended_action"] == "Add 'crystal-clear calls' to bullet #2 and the main image."
 
     log_llm_usage("Agent A", "P1", "gemini-2.5-flash", 100, 50, 150, conn=conn)
     assert conn.execute("SELECT COUNT(*) FROM llm_usage_log").fetchone()[0] == 1
@@ -105,3 +111,29 @@ def test_analyze_product_end_to_end(tmp_path, monkeypatch):
 
     assert len(result["sentiment"].results) == len(reviews)
     assert 0 < len(result["pain_points"]) <= 3
+    # Agent D (recommendations): every pain point should have a non-empty action.
+    for point in result["pain_points"]:
+        assert point.recommended_action
+        assert point.recommended_action.strip() != ""
+
+
+@pytest.mark.skipif(not os.getenv("GEMINI_API_KEY"), reason="requires a live GEMINI_API_KEY")
+def test_compare_products_gap_recommendations_end_to_end(tmp_path, monkeypatch):
+    import src.analysis.storage as storage_module
+
+    monkeypatch.setattr(storage_module, "DB_PATH", tmp_path / "live_gap_test.db")
+
+    from src.analysis import analyze_product, compare_products
+    from src.ingestion.csv_loader import load_reviews_from_csv
+    from tests.test_ingestion import SAMPLE_DIR
+
+    for product_id in ("DEMO-EARBUDS-A", "DEMO-EARBUDS-B"):
+        reviews = load_reviews_from_csv(str(SAMPLE_DIR / f"{product_id}.csv"), product_id=product_id)
+        analyze_product(product_id, reviews)
+
+    gap_batch = compare_products("DEMO-EARBUDS-A", ["DEMO-EARBUDS-B"])
+
+    assert len(gap_batch.opportunities) > 0
+    for opportunity in gap_batch.opportunities:
+        assert opportunity.recommended_action
+        assert opportunity.recommended_action.strip() != ""

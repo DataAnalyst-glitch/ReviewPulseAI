@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS pain_points (
     supporting_quotes TEXT NOT NULL,
     verified_quote_count INTEGER NOT NULL,
     needs_manual_review INTEGER NOT NULL,
+    recommended_action TEXT,
     updated_at TEXT NOT NULL,
     PRIMARY KEY (product_id, rank)
 );
@@ -49,6 +50,7 @@ CREATE TABLE IF NOT EXISTS gap_opportunities (
     competitor_pain_point TEXT NOT NULL,
     opportunity TEXT NOT NULL,
     rationale TEXT NOT NULL,
+    recommended_action TEXT,
     updated_at TEXT NOT NULL
 );
 
@@ -123,7 +125,8 @@ def save_pain_points(product_id: str, pain_points: List[PainPoint], conn: Option
     conn.executemany(
         "INSERT INTO pain_points "
         "(product_id, rank, pain_point, description, supporting_review_ids, supporting_quotes, "
-        "verified_quote_count, needs_manual_review, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "verified_quote_count, needs_manual_review, recommended_action, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             (
                 product_id,
@@ -134,6 +137,7 @@ def save_pain_points(product_id: str, pain_points: List[PainPoint], conn: Option
                 json.dumps(pp.supporting_quotes),
                 pp.verified_quote_count,
                 int(pp.needs_manual_review),
+                pp.recommended_action,
                 now,
             )
             for pp in pain_points
@@ -163,6 +167,7 @@ def get_pain_points(product_id: str, conn: Optional[sqlite3.Connection] = None) 
             "supporting_quotes": json.loads(row["supporting_quotes"]),
             "verified_quote_count": row["verified_quote_count"],
             "needs_manual_review": bool(row["needs_manual_review"]),
+            "recommended_action": row["recommended_action"],
         }
         for row in rows
     ]
@@ -193,7 +198,7 @@ def get_gap_opportunities(main_product_id: str, conn: Optional[sqlite3.Connectio
     own_conn = conn is None
     conn = conn or get_connection()
     rows = conn.execute(
-        "SELECT competitor_product_id, competitor_pain_point, opportunity, rationale "
+        "SELECT competitor_product_id, competitor_pain_point, opportunity, rationale, recommended_action "
         "FROM gap_opportunities WHERE main_product_id = ? ORDER BY rowid",
         (main_product_id,),
     ).fetchall()
@@ -212,10 +217,13 @@ def save_gap_opportunities(
     conn.execute("DELETE FROM gap_opportunities WHERE main_product_id = ?", (main_product_id,))
     conn.executemany(
         "INSERT INTO gap_opportunities "
-        "(main_product_id, competitor_product_id, competitor_pain_point, opportunity, rationale, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
+        "(main_product_id, competitor_product_id, competitor_pain_point, opportunity, rationale, "
+        "recommended_action, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
-            (main_product_id, op.competitor_product_id, op.competitor_pain_point, op.opportunity, op.rationale, now)
+            (
+                main_product_id, op.competitor_product_id, op.competitor_pain_point, op.opportunity,
+                op.rationale, op.recommended_action, now,
+            )
             for op in gap_batch.opportunities
         ],
     )

@@ -29,6 +29,8 @@ class PainPoint(BaseModel):
     # Filled in by the guardrail after parsing, not by the LLM.
     verified_quote_count: int = 0
     needs_manual_review: bool = False
+    # Filled in by Agent D (recommendations) after this pain point is saved.
+    recommended_action: Optional[str] = None
 
 
 class PainPointBatch(BaseModel):
@@ -40,10 +42,36 @@ class GapOpportunity(BaseModel):
     competitor_pain_point: str = Field(description="The competitor pain point this opportunity is based on")
     opportunity: str = Field(description="The feature-gap opportunity for the seller, in plain English")
     rationale: str = Field(description="Why this is a gap: not a comparable pain point for the seller's own product")
+    # Filled in by Agent D (recommendations) after this opportunity is saved.
+    recommended_action: Optional[str] = None
 
 
 class GapOpportunityBatch(BaseModel):
     opportunities: List[GapOpportunity]
+
+
+class PainPointRecommendation(BaseModel):
+    rank: int = Field(description="Matches the rank of the pain point this recommendation is for")
+    recommended_action: str = Field(
+        description="ONE short, concrete, actionable line tied to this specific pain point's evidence. "
+        "If it can't be grounded in the evidence, use exactly: 'Insufficient data for a specific recommendation.'"
+    )
+
+
+class PainPointRecommendationBatch(BaseModel):
+    recommendations: List[PainPointRecommendation]
+
+
+class GapRecommendation(BaseModel):
+    index: int = Field(description="1-based position matching the input opportunity list order")
+    recommended_action: str = Field(
+        description="ONE short, concrete, actionable line tied to this specific gap opportunity's evidence. "
+        "If it can't be grounded in the evidence, use exactly: 'Insufficient data for a specific recommendation.'"
+    )
+
+
+class GapRecommendationBatch(BaseModel):
+    recommendations: List[GapRecommendation]
 
 
 class LLMUsage(BaseModel):

@@ -329,6 +329,8 @@ with st.container(border=True):
                 st.write(point["description"])
                 for quote in point["supporting_quotes"]:
                     st.markdown(f"> {quote}")
+                if point.get("recommended_action"):
+                    st.markdown(f"**💡 Recommended action:** {point['recommended_action']}")
     else:
         st.write("No pain points identified.")
 

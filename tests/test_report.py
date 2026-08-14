@@ -1,3 +1,7 @@
+import io
+
+import pytest
+
 from src.analysis.schemas import GapOpportunity, GapOpportunityBatch, PainPoint, SentimentBatch, SentimentResult
 from src.analysis.storage import save_gap_opportunities, save_pain_points, save_sentiment_results
 from src.ingestion.schema import Review
@@ -35,6 +39,7 @@ def _seed(monkeypatch, tmp_path):
                 supporting_quotes=["Battery dies fast"],
                 verified_quote_count=1,
                 needs_manual_review=False,
+                recommended_action="Add a battery-life disclaimer to bullet #3 and test a larger-capacity cell.",
             )
         ],
     )
@@ -69,6 +74,7 @@ def _seed(monkeypatch, tmp_path):
                     competitor_pain_point="Fit",
                     opportunity="Highlight secure, comfortable fit",
                     rationale="MAIN has no fit complaints",
+                    recommended_action="Add 'secure all-day fit' to the main image callouts.",
                 )
             ]
         ),
@@ -110,6 +116,24 @@ def test_generate_pdf_report_produces_valid_pdf_bytes(monkeypatch, tmp_path):
 
     assert pdf_bytes.startswith(b"%PDF")
     assert len(pdf_bytes) > 1000
+
+
+def test_generate_pdf_report_renders_recommendations(monkeypatch, tmp_path):
+    # fpdf2 compresses content streams by default, so a raw byte-substring
+    # check on the output would silently pass/fail regardless of what's
+    # actually rendered — extract real text via pypdf instead.
+    pypdf = pytest.importorskip("pypdf")
+
+    _seed(monkeypatch, tmp_path)
+    report = build_comparison_report("MAIN", ["COMP"])
+
+    pdf_bytes = generate_pdf_report(report)
+    reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
+    text = "\n".join(page.extract_text() for page in reader.pages)
+
+    assert "Recommended action" in text
+    assert "battery-life disclaimer" in text
+    assert "main image callouts" in text
 
 
 def test_generate_pdf_report_handles_no_competitors(monkeypatch, tmp_path):

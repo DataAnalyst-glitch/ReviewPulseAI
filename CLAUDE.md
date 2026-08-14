@@ -96,3 +96,17 @@ Build and manually test each module before moving to the next. After each module
 ## 6. Immediate Task for This Session
 
 Start with **Module 1 (Data Ingestion)** using the fallback-safe design from Section 5, point 1: build the pipeline so it accepts either (a) a manually uploaded CSV/export of reviews, or (b) a call to a review-data API if a key is present in `.env` — with (a) as the default working path so the demo never breaks. Ask me for my Supabase and Gemini API keys setup status before writing DB code. Confirm the folder structure with me before generating files.
+
+---
+
+## 7. Update Brief — Phase 2 (Differentiation Additions)
+
+> Given after Modules 1–4 were complete and deployed. Goal: differentiate from Helium 10 / Jungle Scout by fixing their specific weaknesses — raw data with no guidance, and no accessibility for non-technical sellers.
+
+**Addition 1 — Recommendation Agent (Agent D, added to Module 3).** Runs after Agents A/B/C. For each pain point / feature gap, adds ONE short, concrete, actionable `recommended_action` line grounded in the actual evidence — not generic advice. Guardrail: if it can't be grounded, it must say "Insufficient data for a specific recommendation." instead of inventing one.
+
+**Status: implemented** (`src/analysis/agents.py`: `run_pain_point_recommendations`, `run_gap_recommendations`). Flows into the existing dashboard (pain-point expanders, gap table) and PDF — no new UI sections, matching the brief's "no new UI needed, just a new column" instruction. A failure in this step is logged and swallowed rather than raised, since it's an enhancement on top of already-successful sentiment/pain-point/gap results, not something that should take down the whole report.
+
+**Addition 2 — Voice Input & Voice Output (Module 4, "wow" differentiator, never blocks core text-input pipeline).** Priority order given: (1) Recommendation Agent, (2) Voice Output (spoken 3-point summary), (3) Voice Input (mic), do last and only if time allows — ship 1+2 and mark 3 "coming soon" if tight on time.
+
+**Status:** see conversation / git log for what shipped — check `app.py` for a "Listen to Summary" button and mic input before assuming either is or isn't present.

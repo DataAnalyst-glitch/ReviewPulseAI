@@ -1,5 +1,6 @@
 """
-Agents A (sentiment), B (pain points), C (gap comparison) — brief Module 3.
+Agents A (sentiment), B (pain points), C (gap comparison), D (recommendations)
+— brief Module 3, plus the Phase 2 Recommendation Agent addition.
 
 Each review set is batched into a single LLM call per agent per product
 (not one call per review) to stay well within Gemini's free-tier rate
@@ -13,8 +14,12 @@ from typing import Dict, List
 
 from src.analysis.llm import get_llm
 from src.analysis.schemas import (
+    GapOpportunity,
     GapOpportunityBatch,
+    GapRecommendationBatch,
+    PainPoint,
     PainPointBatch,
+    PainPointRecommendationBatch,
     SentimentBatch,
 )
 from src.analysis.usage_tracking import log_usage
@@ -106,3 +111,55 @@ def run_gap_analysis(
         "matches one of the seller's own pain points."
     )
     return _invoke_structured(prompt, GapOpportunityBatch, "Agent C (gap analysis)", main_product_id)
+
+
+def run_pain_point_recommendations(product_id: str, pain_points: List[PainPoint]) -> PainPointRecommendationBatch:
+    if not pain_points:
+        return PainPointRecommendationBatch(recommendations=[])
+
+    points_summary = "\n\n".join(
+        f"Rank {p.rank}: {p.pain_point}\n"
+        f"Description: {p.description}\n"
+        f"Evidence quotes: {'; '.join(p.supporting_quotes) or '(none verified)'}"
+        for p in pain_points
+    )
+
+    prompt = (
+        "A seller's product has the following customer pain points, each with supporting evidence "
+        "from real reviews:\n\n"
+        f"{points_summary}\n\n"
+        "For each pain point, write ONE short, concrete, actionable recommendation for the seller — "
+        "something specific they could actually do (e.g. update a listing bullet, contact a supplier, "
+        "revise packaging, add a size chart), tied directly to the evidence above. Do not give generic "
+        "advice like 'improve quality' or 'improve customer service'. If a pain point's evidence is too "
+        "thin or vague to ground a specific recommendation, respond with exactly: "
+        "'Insufficient data for a specific recommendation.' for that pain point instead of inventing one.\n\n"
+        "Return one recommendation per rank, covering every rank listed above."
+    )
+    return _invoke_structured(prompt, PainPointRecommendationBatch, "Agent D (recommendations)", product_id)
+
+
+def run_gap_recommendations(main_product_id: str, gap_opportunities: List[GapOpportunity]) -> GapRecommendationBatch:
+    if not gap_opportunities:
+        return GapRecommendationBatch(recommendations=[])
+
+    opportunities_summary = "\n\n".join(
+        f"{i}. Competitor {g.competitor_product_id} — {g.competitor_pain_point}\n"
+        f"Opportunity: {g.opportunity}\n"
+        f"Rationale: {g.rationale}"
+        for i, g in enumerate(gap_opportunities, start=1)
+    )
+
+    prompt = (
+        "A seller has the following feature-gap opportunities against competitors, based on "
+        "competitor customer complaints their own product doesn't share:\n\n"
+        f"{opportunities_summary}\n\n"
+        "For each opportunity, write ONE short, concrete, actionable recommendation for the seller — "
+        "something specific they could actually do this week (e.g. which listing bullet or main image "
+        "to update, what to A/B test, what claim to add), tied directly to the competitor pain point "
+        "above. Do not give generic advice. If an opportunity is too vague to ground a specific "
+        "recommendation, respond with exactly: 'Insufficient data for a specific recommendation.' "
+        "for that one instead of inventing one.\n\n"
+        "Return one recommendation per index, covering every index listed above."
+    )
+    return _invoke_structured(prompt, GapRecommendationBatch, "Agent D (recommendations)", main_product_id)

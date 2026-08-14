@@ -123,6 +123,16 @@ def _pain_points_section(pdf: FPDF, report: ProductReport) -> None:
             pdf.set_x(MARGIN_MM + 5)
             pdf.cell(0, 5, "Flagged for manual review - supporting quotes unverified.", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
+        if point.get("recommended_action"):
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_text_color(*COLOR_SEQUENTIAL)
+            pdf.set_x(MARGIN_MM + 5)
+            pdf.write(5, "Recommended action: ")
+            pdf.set_font("Helvetica", "", 9)
+            pdf.set_text_color(*COLOR_SECONDARY_INK)
+            pdf.write(5, point["recommended_action"])
+            pdf.ln(7)
+
         pdf.ln(3)
 
 
@@ -145,6 +155,17 @@ def _gap_opportunities_section(pdf: FPDF, report: ComparisonReport) -> None:
         pdf.multi_cell(CONTENT_WIDTH_MM - 5, 5, f"Competitor pain point: {gap['competitor_pain_point']}")
         pdf.set_x(MARGIN_MM + 5)
         pdf.multi_cell(CONTENT_WIDTH_MM - 5, 5, f"Why this works: {gap['rationale']}")
+
+        if gap.get("recommended_action"):
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_text_color(*COLOR_SEQUENTIAL)
+            pdf.set_x(MARGIN_MM + 5)
+            pdf.write(5, "Recommended action: ")
+            pdf.set_font("Helvetica", "", 9)
+            pdf.set_text_color(*COLOR_SECONDARY_INK)
+            pdf.write(5, gap["recommended_action"])
+            pdf.ln(7)
+
         pdf.ln(3)
 
 

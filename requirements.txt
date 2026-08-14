@@ -3,6 +3,7 @@ pandas>=2.0
 python-dotenv>=1.0
 requests>=2.31
 pytest>=8.0
+pypdf>=4.0  # test-only: extracts real text from generated PDFs to verify content
 
 # --- Module 2: RAG / Vector Storage ---
 langchain-core>=0.2

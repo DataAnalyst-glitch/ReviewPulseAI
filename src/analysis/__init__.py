@@ -2,14 +2,28 @@
 Module 3 — Agentic Analysis.
 
 Entry points: analyze_product() runs Agent A (sentiment) + Agent B (pain
-points, with the quote guardrail applied) and saves results. compare_products()
-runs Agent C (gap analysis) using previously saved pain points for the main
-product and its competitors — call analyze_product() for all of them first.
+points, with the quote guardrail applied) + Agent D (recommendations) and
+saves results. compare_products() runs Agent C (gap analysis) + Agent D
+(recommendations) using previously saved pain points for the main product
+and its competitors — call analyze_product() for all of them first.
+
+Agent D (Phase 2 addition) turns each pain point / gap opportunity into
+one concrete, actionable line — see CLAUDE.md's Update Brief. A failure
+in the recommendation step is logged and swallowed rather than raised:
+it's an enhancement on top of the core sentiment/pain-point/gap results,
+not something that should take down an otherwise-successful analysis.
 """
 
 from typing import Dict, List
 
-from src.analysis.agents import AnalysisError, run_gap_analysis, run_pain_point_extraction, run_sentiment_analysis
+from src.analysis.agents import (
+    AnalysisError,
+    run_gap_analysis,
+    run_gap_recommendations,
+    run_pain_point_extraction,
+    run_pain_point_recommendations,
+    run_sentiment_analysis,
+)
 from src.analysis.guardrail import verify_pain_points
 from src.analysis.schemas import GapOpportunityBatch
 from src.analysis.storage import get_pain_points, save_gap_opportunities, save_pain_points, save_sentiment_results
@@ -19,6 +33,8 @@ from src.utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 __all__ = ["AnalysisError", "analyze_product", "compare_products"]
+
+INSUFFICIENT_DATA = "Insufficient data for a specific recommendation."
 
 
 def analyze_product(product_id: str, reviews: List[Review]) -> Dict:
@@ -30,6 +46,15 @@ def analyze_product(product_id: str, reviews: List[Review]) -> Dict:
 
     pain_point_batch = run_pain_point_extraction(product_id, reviews)
     verified_pain_points = verify_pain_points(pain_point_batch.pain_points, reviews)
+
+    try:
+        recommendation_batch = run_pain_point_recommendations(product_id, verified_pain_points)
+        by_rank = {r.rank: r.recommended_action for r in recommendation_batch.recommendations}
+        for point in verified_pain_points:
+            point.recommended_action = by_rank.get(point.rank, INSUFFICIENT_DATA)
+    except AnalysisError as exc:
+        logger.warning("Agent D (recommendations) failed for %s, continuing without them: %s", product_id, exc)
+
     save_pain_points(product_id, verified_pain_points)
 
     flagged = sum(1 for p in verified_pain_points if p.needs_manual_review)
@@ -56,5 +81,17 @@ def compare_products(main_product_id: str, competitor_product_ids: List[str]) ->
             logger.warning("No stored pain points for competitor %s — skipping.", competitor_id)
 
     gap_batch = run_gap_analysis(main_product_id, main_pain_points, competitor_pain_points)
+
+    try:
+        recommendation_batch = run_gap_recommendations(main_product_id, gap_batch.opportunities)
+        by_index = {r.index: r.recommended_action for r in recommendation_batch.recommendations}
+        for i, opportunity in enumerate(gap_batch.opportunities, start=1):
+            opportunity.recommended_action = by_index.get(i, INSUFFICIENT_DATA)
+    except AnalysisError as exc:
+        logger.warning(
+            "Agent D (recommendations) failed for %s gap opportunities, continuing without them: %s",
+            main_product_id, exc,
+        )
+
     save_gap_opportunities(main_product_id, gap_batch)
     return gap_batch
