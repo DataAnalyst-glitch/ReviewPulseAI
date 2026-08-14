@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS sentiment_results (
     sentiment TEXT NOT NULL,
     rating REAL,
     review_text TEXT NOT NULL,
+    is_demo_data INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL
 );
 
@@ -90,11 +91,21 @@ def save_sentiment_results(
         review = reviews_by_id.get(result.review_id)
         if review is None:
             continue
-        rows.append((result.review_id, product_id, result.sentiment, review.rating, review.review_text, now))
+        rows.append(
+            (
+                result.review_id,
+                product_id,
+                result.sentiment,
+                review.rating,
+                review.review_text,
+                int(review.is_demo_data),
+                now,
+            )
+        )
 
     conn.executemany(
         "INSERT OR REPLACE INTO sentiment_results "
-        "(review_id, product_id, sentiment, rating, review_text, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        "(review_id, product_id, sentiment, rating, review_text, is_demo_data, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         rows,
     )
     conn.commit()
@@ -155,6 +166,40 @@ def get_pain_points(product_id: str, conn: Optional[sqlite3.Connection] = None) 
         }
         for row in rows
     ]
+
+
+def get_product_sentiment(product_id: str, conn: Optional[sqlite3.Connection] = None) -> Dict:
+    own_conn = conn is None
+    conn = conn or get_connection()
+    rows = conn.execute(
+        "SELECT sentiment, COUNT(*) as cnt FROM sentiment_results WHERE product_id = ? GROUP BY sentiment",
+        (product_id,),
+    ).fetchall()
+    demo_row = conn.execute(
+        "SELECT is_demo_data FROM sentiment_results WHERE product_id = ? LIMIT 1", (product_id,)
+    ).fetchone()
+    if own_conn:
+        conn.close()
+
+    counts = {row["sentiment"]: row["cnt"] for row in rows}
+    return {
+        "counts": counts,
+        "total": sum(counts.values()),
+        "is_demo_data": bool(demo_row["is_demo_data"]) if demo_row else False,
+    }
+
+
+def get_gap_opportunities(main_product_id: str, conn: Optional[sqlite3.Connection] = None) -> List[Dict]:
+    own_conn = conn is None
+    conn = conn or get_connection()
+    rows = conn.execute(
+        "SELECT competitor_product_id, competitor_pain_point, opportunity, rationale "
+        "FROM gap_opportunities WHERE main_product_id = ? ORDER BY rowid",
+        (main_product_id,),
+    ).fetchall()
+    if own_conn:
+        conn.close()
+    return [dict(row) for row in rows]
 
 
 def save_gap_opportunities(

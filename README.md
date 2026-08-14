@@ -2,14 +2,14 @@
 
 **For sellers/clients:** ReviewPulse AI reads through your Amazon/Flipkart product reviews — and up to 3 competitors' — and turns them into a plain-English report: what customers love, their top complaints, and specific gaps where competitors are getting complained about but you could win the sale instead. You get a live dashboard and a clean PDF you can keep or share with your team.
 
-- Live demo: _coming soon_
-- Sample report: `sample_output/` (coming once Module 4 is built)
+- Live demo: _coming soon_ (not yet deployed to Streamlit Community Cloud)
+- Sample report: [`sample_output/DEMO-EARBUDS-A_sample_report.pdf`](sample_output/DEMO-EARBUDS-A_sample_report.pdf) — a fully-run example on bundled demo data
 
 ---
 
 ## For developers
 
-Status: **Modules 1–3 (Data Ingestion, RAG/Vector Storage, Agentic Analysis).** Module 4 (dashboards/PDF) is not built yet — see `CLAUDE.md` for the full build plan and approved tech-stack deviations.
+Status: **Modules 1–4 (Data Ingestion, RAG/Vector Storage, Agentic Analysis, Presentation Layer).** All four build-order modules from `CLAUDE.md` are implemented; see that file for approved tech-stack deviations. Not yet deployed to Streamlit Community Cloud, and Power BI / Supabase are still deferred (see Module 4 below).
 
 ### Setup
 
@@ -76,6 +76,23 @@ gaps = compare_products("DEMO-EARBUDS-A", ["DEMO-EARBUDS-B"])  # run analyze_pro
 
 Results persist to local SQLite (`data/reviewpulse.db`, git-ignored) — a stand-in for Supabase, same reasoning as Module 2's Chroma store. Every LLM call's token usage is logged to the `llm_usage_log` table (brief Section 5.3) so real per-report cost is knowable before pricing a Fiverr gig.
 
+### Module 4 — Presentation Layer
+
+`app.py` (repo root, for Streamlit Community Cloud's default entry-file convention) is the UI:
+
+```bash
+streamlit run app.py
+```
+
+Enter a product ID (default `DEMO-EARBUDS-A`) and up to 3 competitor IDs, optionally uploading a review CSV for each — same fallback chain as Module 1 (CSV → live API → bundled demo data), so the demo never breaks on a missing upload. "Analyze" runs the full ingest → index → sentiment/pain-points → gap-comparison pipeline with per-product error handling (a failed competitor is skipped with a warning, not a crash) and shows:
+
+- **Sentiment pie chart** — fixed status colors (green=Positive, gray=Neutral, red=Negative), not arbitrary categorical hues, since sentiment is a state, not an identity. Colors are the validated status palette from the dataviz skill's reference instance, not picked by eye.
+- **Pain-point bar chart** — single sequential blue hue, ranked by how many reviews support each point.
+- **Feature Gap Opportunities table.**
+- **"Generate Report (PDF)"** button (brief Section 5.6) — exports the same findings as a formatted, brandable PDF via `src/report/pdf_generator.py` (fpdf2, same validated color roles as the charts). No chart-image embedding (would need `kaleido`, an extra dependency with its own compatibility risk) — bars are drawn directly as filled rectangles instead.
+
+Power BI's live Supabase connector and Supabase itself remain deferred — Module 4 reads from the local SQLite/Chroma stores Modules 2–3 already write to. `src/report/__init__.py` is a read-only view over stored results (no LLM calls), so the Streamlit UI and PDF generator both build from the same data without re-running analysis.
+
 ### Tests
 
 ```bash
@@ -90,10 +107,13 @@ The one test requiring a live `GEMINI_API_KEY` is skipped automatically if it's 
 src/ingestion/     Module 1 — csv_loader, api_client, schema, orchestrator
 src/rag/           Module 2 — chunking, embeddings, vector_store, orchestrator
 src/analysis/      Module 3 — agents (sentiment/pain-points/gaps), guardrail, storage, orchestrator
+src/report/        Module 4 — report data view, pdf_generator
 src/utils/         logging_config
+app.py             Module 4 — Streamlit UI (repo root, for Streamlit Cloud's entry-file convention)
 data/sample_reviews/  bundled demo CSVs (2 fictional products, for testing/fallback)
-data/raw/          cleaned output per ingestion run (git-ignored)
+data/raw/          cleaned output per ingestion run + uploaded CSVs (git-ignored)
 data/vector_store/ local Chroma index (git-ignored)
 data/reviewpulse.db  local SQLite results + token usage log (git-ignored)
+sample_output/     one committed fully-run example (input -> PDF), for portfolio/gig use
 tests/             pytest suite
 ```

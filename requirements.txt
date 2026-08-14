@@ -16,7 +16,10 @@ chromadb>=0.5
 # CrewAI dropped (see CLAUDE.md deviations) — plain LangChain + Gemini instead.
 langchain-google-genai>=2.0
 
-# --- Added in later modules (uncomment as we build them) ---
+# --- Module 4: Presentation Layer ---
+streamlit>=1.35
+plotly>=5.20
+fpdf2>=2.7
+
+# --- Added later, once Supabase is set up ---
 # supabase>=2.4
-# streamlit>=1.35
-# fpdf2>=2.7
