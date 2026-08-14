@@ -194,7 +194,7 @@ with st.sidebar:
             ccsv = st.file_uploader(f"Competitor {i + 1} CSV (optional)", type="csv", key=f"comp_csv_{i}")
             competitor_inputs.append((cid.strip(), ccsv))
 
-        submitted = st.form_submit_button("Analyze", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("Analyze", type="primary", width="stretch")
 
     with st.expander("How this works"):
         st.markdown(
@@ -301,14 +301,14 @@ with st.container(border=True):
             fig = go.Figure(data=[go.Pie(labels=labels, values=values, marker=dict(colors=colors), hole=0.4)])
             fig.update_traces(textinfo="label+percent", hovertemplate="%{label}: %{value} reviews<extra></extra>")
             fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=280)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
         else:
             st.write("No sentiment results.")
     with col_table:
         st.dataframe(
             {"Sentiment": SENTIMENT_ORDER, "Count": [main.sentiment_counts.get(s, 0) for s in SENTIMENT_ORDER]},
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
 
 with st.container(border=True):
@@ -321,7 +321,7 @@ with st.container(border=True):
             yaxis=dict(autorange="reversed"), xaxis_title="Supporting reviews",
             margin=dict(t=10, b=10, l=10, r=10), height=220,
         )
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig2, width="stretch")
 
         for point in main.pain_points:
             flag = "⚠️ needs manual review" if point["needs_manual_review"] else f"✓ {point['verified_quote_count']} quote(s) verified"
@@ -336,7 +336,7 @@ if report.competitors:
     with st.container(border=True):
         st.subheader("Feature Gap Opportunities")
         if report.gap_opportunities:
-            st.dataframe(report.gap_opportunities, hide_index=True, use_container_width=True)
+            st.dataframe(report.gap_opportunities, hide_index=True, width="stretch")
         else:
             st.write("No gap opportunities identified.")
 
