@@ -22,11 +22,16 @@
 |Layer|Technology|
 |-|-|
 |Frontend/Demo UI|Streamlit (Python)|
-|Backend/Agent orchestration|Python, LangChain, CrewAI|
+|Backend/Agent orchestration|Python, LangChain, ~~CrewAI~~ (see deviation below)|
 |LLM|Google Gemini API (free tier)|
-|Database + Vector store|Supabase (PostgreSQL + pgvector)|
+|Database + Vector store|Supabase (PostgreSQL + pgvector), currently Chroma+SQLite locally (see deviation below)|
 |Client-facing analytics|Power BI Desktop (live Supabase connector)|
 |Secrets|`.env` file, never hardcoded, never committed|
+
+**Approved deviations (asked, user confirmed):**
+
+- **CrewAI dropped, plain LangChain used instead.** CrewAI's dependency chain pulls in `langchain<0.2`, which pins `numpy<2` — no prebuilt wheel exists for this machine's Python 3.14 and it can't build from source (no C compiler installed). Agents A/B/C (Module 3) are implemented as direct `langchain-google-genai` calls with Pydantic structured output instead.
+- **Supabase deferred, local storage used instead.** Module 2 (vectors) uses a local Chroma store (`data/vector_store/`); Module 3 (structured analysis results) uses local SQLite (`data/reviewpulse.db`). Both are designed as drop-in swaps for Supabase pgvector/Postgres — only the storage-layer module needs to change when Supabase is set up, not the agent/RAG logic.
 
 ---
 
