@@ -109,4 +109,4 @@ Start with **Module 1 (Data Ingestion)** using the fallback-safe design from Sec
 
 **Addition 2 — Voice Input & Voice Output (Module 4, "wow" differentiator, never blocks core text-input pipeline).** Priority order given: (1) Recommendation Agent, (2) Voice Output (spoken 3-point summary), (3) Voice Input (mic), do last and only if time allows — ship 1+2 and mark 3 "coming soon" if tight on time.
 
-**Status:** see conversation / git log for what shipped — check `app.py` for a "Listen to Summary" button and mic input before assuming either is or isn't present.
+**Status:** Voice Output shipped (`app.py` "Listen to Summary" button + `src/report/voice_summary.py`, verified live). Voice Input marked "coming soon" in the sidebar per this brief's own explicit fallback — evaluated feasible dependency-wise (`streamlit-mic-recorder` installs cleanly) but deferred: transcription would depend on an undocumented free Google STT endpoint (reliability risk for a paying client) and there's no way to verify real microphone capture end-to-end in an automated/headless environment with no hardware mic. User confirmed this call when asked.

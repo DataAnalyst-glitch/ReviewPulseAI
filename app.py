@@ -226,6 +226,7 @@ with st.sidebar:
         main_id = st.text_input(
             "Product ID or ASIN", value=DEMO_PRODUCTS[0], help="A short identifier you choose — used to label results and match an uploaded CSV."
         )
+        st.caption("🎤 Voice input — coming soon")
         main_csv = st.file_uploader(
             "Reviews CSV (optional)", type="csv", key="main_csv",
             help="One row per review with a text column (review_text/review/text/body). Leave empty to use demo data.",
