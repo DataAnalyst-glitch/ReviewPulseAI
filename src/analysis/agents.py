@@ -2,12 +2,18 @@
 Agents A (sentiment), B (pain points), C (gap comparison), D (recommendations)
 — brief Module 3, plus the Phase 2 Recommendation Agent addition.
 
-Each review set is batched into a single LLM call per agent per product
-(not one call per review) to stay well within Gemini's free-tier rate
-limits and the 60-second pipeline budget. Every call is wrapped so a
-failure (rate limit, malformed response, network error) raises
-AnalysisError with a message safe to show a client, never a raw
-stack trace (brief Section 5.2).
+Each review set is batched into as few LLM calls as possible per agent per
+product (not one call per review), to stay well within Gemini's free-tier
+rate limits. Agent B/C/D outputs stay small (a handful of pain points or
+gaps) regardless of review count, so they're always one call. Agent A is
+the exception: it returns one structured result per review, so at the
+200-300 review cap a single call risks the model's output-token limit and
+truncated/unparseable JSON — it's chunked into SENTIMENT_BATCH_SIZE-sized
+calls instead and the results merged, trading a few extra calls (and a
+somewhat longer pipeline) for reliability at this review volume. Every
+call is wrapped so a failure (rate limit, malformed response, network
+error) raises AnalysisError with a message safe to show a client, never a
+raw stack trace (brief Section 5.2).
 """
 
 from typing import Dict, List
@@ -59,18 +65,34 @@ def _invoke_structured(prompt: str, schema, agent_name: str, product_id: str):
     return parsed
 
 
+# Agent A returns one result per review, so its output size scales directly
+# with review count — unlike Agents B/C/D, whose output is always a handful
+# of pain points/gaps regardless of how many reviews went in. Chunking keeps
+# each call's output comfortably within the model's output-token limit even
+# at the 300-review cap, instead of risking one giant call getting truncated
+# and failing the whole product's sentiment analysis.
+SENTIMENT_BATCH_SIZE = 50
+
+
 def run_sentiment_analysis(product_id: str, reviews: List[Review]) -> SentimentBatch:
     if not reviews:
         return SentimentBatch(results=[])
 
-    prompt = (
-        "Classify the sentiment of each product review below as exactly one of: "
-        "Positive, Neutral, or Negative. Base the classification on the review text "
-        "(and rating, if given) as a whole.\n\n"
-        f"{_format_reviews(reviews)}\n\n"
-        "Return one result per review id, covering every id listed above."
-    )
-    return _invoke_structured(prompt, SentimentBatch, "Agent A (sentiment)", product_id)
+    batches = [reviews[i : i + SENTIMENT_BATCH_SIZE] for i in range(0, len(reviews), SENTIMENT_BATCH_SIZE)]
+    all_results = []
+    for i, batch in enumerate(batches, start=1):
+        prompt = (
+            "Classify the sentiment of each product review below as exactly one of: "
+            "Positive, Neutral, or Negative. Base the classification on the review text "
+            "(and rating, if given) as a whole.\n\n"
+            f"{_format_reviews(batch)}\n\n"
+            "Return one result per review id, covering every id listed above."
+        )
+        agent_label = "Agent A (sentiment)" if len(batches) == 1 else f"Agent A (sentiment) [batch {i}/{len(batches)}]"
+        batch_result = _invoke_structured(prompt, SentimentBatch, agent_label, product_id)
+        all_results.extend(batch_result.results)
+
+    return SentimentBatch(results=all_results)
 
 
 def run_pain_point_extraction(product_id: str, reviews: List[Review]) -> PainPointBatch:

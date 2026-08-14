@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from src.ingestion import IngestionError, ingest_reviews
-from src.ingestion.csv_loader import CSVLoadError, load_reviews_from_csv
+from src.ingestion.csv_loader import MAX_TARGET_REVIEWS, MIN_TARGET_REVIEWS, CSVLoadError, load_reviews_from_csv
 
 SAMPLE_DIR = Path(__file__).resolve().parents[1] / "data" / "sample_reviews"
 
@@ -52,3 +52,18 @@ def test_ingest_reviews_raises_when_nothing_available(monkeypatch):
     monkeypatch.delenv("REVIEW_API_KEY", raising=False)
     with pytest.raises(IngestionError):
         ingest_reviews("NO-SUCH-PRODUCT")
+
+
+def test_load_reviews_from_csv_caps_at_300(tmp_path):
+    # Sample size increase (30-50 -> 200-300): confirms the raised cap is
+    # actually wired up, not just the constants renamed.
+    big_csv = tmp_path / "big.csv"
+    pd.DataFrame({"review_text": [f"Review number {i} is unique enough to pass dedup filtering." for i in range(400)]}).to_csv(
+        big_csv, index=False
+    )
+
+    reviews = load_reviews_from_csv(str(big_csv), product_id="X")
+
+    assert MAX_TARGET_REVIEWS == 300
+    assert MIN_TARGET_REVIEWS == 200
+    assert len(reviews) == 300

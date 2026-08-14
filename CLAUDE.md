@@ -120,3 +120,19 @@ Start with **Module 1 (Data Ingestion)** using the fallback-safe design from Sec
 **`DEMO_MODE` env var (`app.py`, UI-layer only — ingestion/RAG/analysis/report code is unchanged and unaware this flag exists).** When `true`: only the bundled sample products (`DEMO_PRODUCTS`, discovered from `data/sample_reviews/*.csv` at runtime, not hardcoded) can be analyzed; any other product ID or an uploaded CSV (main or competitor) shows a friendly "this is a paid service" message and stops before running the pipeline; CSV upload widgets are also disabled outright. Unset (default, including local `.env`) → full functionality, for running real client orders.
 
 **Deployed:** Streamlit Cloud Secrets has `DEMO_MODE = "true"` (public link, demo-only). Local `.env` leaves it unset (full functionality for paid orders). Both modes verified locally in-browser before pushing: full mode ran a non-demo product ID through the normal pipeline (and failed with the ordinary `IngestionError`, not a gate message); demo mode blocked both a non-demo main ID and a non-demo competitor ID with the gate message, and ran the default demo pair normally.
+
+---
+
+## 9. Update Brief — Sample Size, Trust, and Listing Copy
+
+> Given after the DEMO_MODE gate shipped. Five features, in priority order, each implemented/tested/committed/pushed separately: (1) Suggested Listing Copy, (2) sample size increase, (3) trust/accuracy disclaimer, (4) Voice Output re-verification against a tighter 30-45s spec, (5) Voice Input if time allows.
+
+**Addition 1 — Suggested Listing Copy.** For each pain point with a groundable `recommended_action`, Agent D's same call also produces `suggested_listing_copy`: one ready-to-use, Amazon-style listing bullet (<=200 characters, benefit-focused) addressing that pain point, grounded in the same verified evidence. Suppressed (not the fallback string) whenever `recommended_action` is the insufficient-data fallback. **Status: implemented and verified live** (`src/analysis/schemas.py`, `agents.py`, `storage.py` migration, Streamlit expander, PDF export).
+
+**Addition 2 — Sample size increase (30-50 -> 200-300 reviews).** Supersedes Section 4's "under 60 seconds" NFR for the full pipeline — user explicitly authorized "a few minutes is fine" for this change after being shown the tradeoff. The real risk found and flagged before implementing: Agent A (sentiment) returns one structured JSON result per review in a single call, so at 300 reviews a single call risked the model's output-token limit and truncated/unparseable JSON (this exact failure class was independently observed minutes earlier from an unrelated transient rate-limit error during test runs). User chose to batch Agent A into 50-review chunks (`SENTIMENT_BATCH_SIZE` in `src/analysis/agents.py`) rather than raise the cap on the single-call design or compromise on a smaller cap. Agents B/C/D output a small fixed-size result regardless of review count, so they stay single-call — no batching needed there. Local embedding/RAG (Module 2) was not a cost/reliability concern either way — it's free and fast at any review count tested.
+
+**Addition 3 — Trust/accuracy disclaimer.** Short, professional disclaimer on both the Streamlit results page and the PDF: review-text-only analysis, N reviews analyzed, doesn't incorporate sales/pricing/market data, use alongside business judgment.
+
+**Addition 4 — Voice Output, re-verified against a 30-45 second spec.** Was already shipped (Section 7 Addition 2); this update brief asked for a specific 30-45 second length, tighter than the original 3-point-summary spec produced. `build_voice_summary()` expanded (still template-built from already-known structured results, no new LLM call, still grounded) to land in that range.
+
+**Addition 5 — Voice Input.** Lowest priority, explicitly OK to leave "coming soon" if time/blockers arise, per this brief's own instruction.

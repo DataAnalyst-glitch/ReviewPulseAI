@@ -37,7 +37,7 @@ reviews = ingest_reviews("DEMO-EARBUDS-B")
 
 CSV input requirements: one column with the review text (`review_text`, `review`, `text`, `body`, `review_body`, or `content`), plus optional `rating`, `review_date`, `verified_purchase` columns. Any reviewer-identity columns (name, profile URL, username, email) are dropped before a review ever enters the pipeline — see `src/ingestion/csv_loader.py` PII handling.
 
-Cleaned output is capped to 30–50 reviews per product and saved to `data/raw/` (git-ignored, regenerated per run). Logs go to `logs/app.log`.
+Cleaned output is capped to 200–300 reviews per product and saved to `data/raw/` (git-ignored, regenerated per run). Logs go to `logs/app.log`.
 
 ### Module 2 — RAG / Vector Storage
 
@@ -57,9 +57,9 @@ Each indexed chunk's metadata carries the full original review text (`original_r
 
 ### Module 3 — Agentic Analysis
 
-Four agents, each a single batched Gemini call per product (not one call per review, to stay well within free-tier rate limits and the 60-second pipeline budget):
+Four agents, each batched into as few Gemini calls per product as possible (not one call per review, to stay well within free-tier rate limits):
 
-- **Agent A (sentiment)** — classifies every review as Positive/Neutral/Negative.
+- **Agent A (sentiment)** — classifies every review as Positive/Neutral/Negative. Chunked into 50-review calls (`SENTIMENT_BATCH_SIZE`) rather than one call for the whole product: this is the one agent whose output size scales directly with review count (one JSON result per review), so at the 200-300 review cap a single call risks the model's output-token limit and truncated/unparseable JSON. Agents B/C/D below always produce a small, fixed-size result regardless of review count, so they stay single-call.
 - **Agent B (pain points)** — extracts the top 3 recurring complaints, each with supporting review ids and verbatim supporting quotes.
 - **Agent C (gap analysis)** — compares the main product's pain points against up to 3 competitors' and surfaces "Feature Gap Opportunities": competitor complaints the seller's product doesn't share.
 - **Agent D (recommendations)** — Phase 2 addition (`CLAUDE.md` Section 7). Turns each of the main product's pain points and each gap opportunity into ONE concrete, actionable `recommended_action` line grounded in the evidence (e.g. "Update the A+ content and main feature bullet points to explicitly highlight..."), not generic advice. If it can't ground a recommendation, it says so ("Insufficient data for a specific recommendation.") instead of inventing one. For pain points specifically, the same call also produces `suggested_listing_copy` — one ready-to-use, Amazon-style listing bullet (under 200 characters) addressing that pain point, grounded in the same evidence, suppressed whenever `recommended_action` is the insufficient-data fallback. A failure here is logged and swallowed, not raised — it's an enhancement on already-successful results.

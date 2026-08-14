@@ -173,7 +173,7 @@ st.markdown(
     <div class="rp-hero">
         <h1>📊 ReviewPulse AI</h1>
         <p>Turn Amazon &amp; Flipkart reviews into a sentiment breakdown, top customer pain points,
-        and competitor feature-gap opportunities — in under two minutes.</p>
+        and competitor feature-gap opportunities — in a few minutes.</p>
     </div>
     """,
     unsafe_allow_html=True,

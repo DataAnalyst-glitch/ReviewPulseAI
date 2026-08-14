@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 
 SERPAPI_ENDPOINT = "https://serpapi.com/search"
 REQUEST_TIMEOUT_SECONDS = 15
-MAX_TARGET_REVIEWS = 50
+MAX_TARGET_REVIEWS = 300
 
 
 class APIUnavailableError(Exception):

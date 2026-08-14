@@ -3,7 +3,9 @@ import os
 import pytest
 
 import src.analysis as analysis_module
+import src.analysis.agents as agents_module
 from src.analysis import INSUFFICIENT_DATA, analyze_product
+from src.analysis.agents import SENTIMENT_BATCH_SIZE, run_sentiment_analysis
 from src.analysis.guardrail import verify_pain_points
 from src.analysis.schemas import (
     GapOpportunity,
@@ -210,6 +212,31 @@ def test_storage_round_trip(tmp_path):
     assert conn.execute("SELECT COUNT(*) FROM llm_usage_log").fetchone()[0] == 1
 
     conn.close()
+
+
+def test_run_sentiment_analysis_batches_large_review_sets(monkeypatch):
+    # Sample size increase (30-50 -> 200-300): Agent A returns one result
+    # per review, so it must chunk instead of making one giant call that
+    # risks the model's output-token limit. This mocks _invoke_structured
+    # to prove the chunking/merging logic itself, without a live API key.
+    reviews = [_review("P1", f"Review text number {i}, unique enough to matter.") for i in range(120)]
+    calls = []
+
+    def fake_invoke_structured(prompt, schema, agent_name, product_id):
+        calls.append(agent_name)
+        # Recover which review ids this batch's prompt covers by matching
+        # against the full review list, same way _format_reviews renders them.
+        batch_reviews = [r for r in reviews if r.review_id in prompt]
+        return SentimentBatch(results=[SentimentResult(review_id=r.review_id, sentiment="Positive") for r in batch_reviews])
+
+    monkeypatch.setattr(agents_module, "_invoke_structured", fake_invoke_structured)
+
+    result = run_sentiment_analysis("P1", reviews)
+
+    expected_batches = -(-len(reviews) // SENTIMENT_BATCH_SIZE)  # ceil division
+    assert len(calls) == expected_batches
+    assert len(result.results) == len(reviews)
+    assert {r.review_id for r in result.results} == {r.review_id for r in reviews}
 
 
 def test_analyze_product_maps_and_caps_suggested_listing_copy(tmp_path, monkeypatch):
