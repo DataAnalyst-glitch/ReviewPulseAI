@@ -51,17 +51,102 @@ st.markdown(
     .rp-hero h1 { margin: 0; font-size: 1.9rem; font-weight: 700; }
     .rp-hero p { margin: 0.45rem 0 0 0; opacity: 0.92; font-size: 1.02rem; max-width: 46rem; }
 
-    [data-testid="stMetric"] {
-        background: #f9f9f7;
-        border: 1px solid #e1e0d9;
-        border-radius: 10px;
-        padding: 0.9rem 1rem 0.7rem 1rem;
+    .rp-stat {
+        position: relative;
+        border-radius: 18px;
+        padding: 1.1rem 1.15rem 0.95rem 1.15rem;
+        min-height: 104px;
+        overflow: hidden;
     }
-    [data-testid="stMetricLabel"] { font-size: 0.85rem; color: #52514e; }
+    .rp-stat-icon {
+        position: absolute;
+        top: 0.7rem;
+        right: 0.7rem;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+    .rp-stat-icon svg { width: 16px; height: 16px; }
+    .rp-stat-label {
+        font-size: 0.82rem;
+        font-weight: 500;
+        color: rgba(11, 11, 11, 0.62);
+        margin: 0 0 0.2rem 0;
+        padding-right: 2.4rem;
+    }
+    .rp-stat-value { font-size: 1.95rem; font-weight: 700; line-height: 1.15; margin: 0; }
+
+    .rp-stat-blue   { background: linear-gradient(135deg, #dcecfc 0%, #f1f8ff 100%); }
+    .rp-stat-blue .rp-stat-value { color: #184f95; }
+    .rp-stat-blue .rp-stat-icon  { color: #2a78d6; }
+
+    .rp-stat-green  { background: linear-gradient(135deg, #dcf5e1 0%, #f1fbf2 100%); }
+    .rp-stat-green .rp-stat-value { color: #0b6b13; }
+    .rp-stat-green .rp-stat-icon  { color: #0ca30c; }
+
+    .rp-stat-amber  { background: linear-gradient(135deg, #fce9cd 0%, #fff6e9 100%); }
+    .rp-stat-amber .rp-stat-value { color: #9a5b12; }
+    .rp-stat-amber .rp-stat-icon  { color: #c9791c; }
+
+    .rp-stat-purple { background: linear-gradient(135deg, #ede1fb 0%, #f8f2fe 100%); }
+    .rp-stat-purple .rp-stat-value { color: #5b3aa0; }
+    .rp-stat-purple .rp-stat-icon  { color: #7c4fd6; }
     </style>
     """,
     unsafe_allow_html=True,
 )
+
+# Feather-style line icons, 24x24 viewBox, stroke="currentColor" so each
+# picks up its card's accent color (set via .rp-stat-<variant> .rp-stat-icon).
+_STAT_ICONS = {
+    "reviews": (
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+        'stroke-linecap="round" stroke-linejoin="round">'
+        '<line x1="6" y1="20" x2="6" y2="12"></line>'
+        '<line x1="12" y1="20" x2="12" y2="8"></line>'
+        '<line x1="18" y1="20" x2="18" y2="4"></line>'
+        "</svg>"
+    ),
+    "positive": (
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" '
+        'stroke-linecap="round" stroke-linejoin="round">'
+        '<polyline points="20 6 9 17 4 12"></polyline>'
+        "</svg>"
+    ),
+    "pain": (
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+        'stroke-linecap="round" stroke-linejoin="round">'
+        '<polygon points="12 2 22 20 2 20"></polygon>'
+        '<line x1="12" y1="9" x2="12" y2="14"></line>'
+        '<line x1="12" y1="17" x2="12.01" y2="17"></line>'
+        "</svg>"
+    ),
+    "gaps": (
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+        'stroke-linecap="round" stroke-linejoin="round">'
+        '<circle cx="12" cy="12" r="10"></circle>'
+        '<circle cx="12" cy="12" r="6"></circle>'
+        '<circle cx="12" cy="12" r="2"></circle>'
+        "</svg>"
+    ),
+}
+
+
+def _stat_card(column, variant: str, icon_key: str, label: str, value: str) -> None:
+    with column:
+        st.markdown(
+            f'<div class="rp-stat rp-stat-{variant}">'
+            f'<div class="rp-stat-icon">{_STAT_ICONS[icon_key]}</div>'
+            f'<p class="rp-stat-label">{label}</p>'
+            f'<p class="rp-stat-value">{value}</p>'
+            f"</div>",
+            unsafe_allow_html=True,
+        )
 
 st.markdown(
     """
@@ -197,10 +282,13 @@ st.header(f"Results — {main.product_id}")
 
 positive_pct = (main.sentiment_counts.get("Positive", 0) / main.total_reviews * 100) if main.total_reviews else 0
 metric_cols = st.columns(4)
-metric_cols[0].metric("Reviews analyzed", main.total_reviews)
-metric_cols[1].metric("Positive sentiment", f"{positive_pct:.0f}%")
-metric_cols[2].metric("Pain points found", len(main.pain_points))
-metric_cols[3].metric("Gap opportunities", len(report.gap_opportunities) if report.competitors else "—")
+_stat_card(metric_cols[0], "blue", "reviews", "Reviews analyzed", str(main.total_reviews))
+_stat_card(metric_cols[1], "green", "positive", "Positive sentiment", f"{positive_pct:.0f}%")
+_stat_card(metric_cols[2], "amber", "pain", "Pain points found", str(len(main.pain_points)))
+_stat_card(
+    metric_cols[3], "purple", "gaps", "Gap opportunities",
+    str(len(report.gap_opportunities)) if report.competitors else "—",
+)
 
 with st.container(border=True):
     st.subheader("Sentiment Breakdown")
