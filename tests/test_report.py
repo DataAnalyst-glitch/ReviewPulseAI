@@ -144,7 +144,8 @@ def test_generate_pdf_report_renders_recommendations(monkeypatch, tmp_path):
     # its own newlines, which won't match pypdf's extracted line breaks.)
     assert "Executive Summary" in text
     assert "quick summary for MAIN" in text
-    assert "50 percent positive, 50 percent negative" in text
+    assert "50 percent positive" in text
+    assert "50 percent negative" in text
     # Trust/accuracy disclaimer must appear on every page's footer.
     assert "customer review text only" in text
     assert "does not incorporate sales volume, pricing, or market trend data" in text
@@ -218,6 +219,29 @@ def test_build_voice_summary_handles_no_pain_points():
     summary = build_voice_summary(report)
 
     assert "No major pain points" in summary
+
+
+def test_build_voice_summary_lands_in_30_to_45_second_range():
+    # Update Brief: 30-45 seconds of spoken audio. At a typical browser TTS
+    # rate (~130-170 wpm) that's roughly 65-130 words - wide enough to not
+    # be brittle across voices/rates, but well above the old ~45-55 word
+    # version this replaced (which ran closer to 15-20 seconds).
+    report = _make_report(
+        {"Positive": 6, "Neutral": 1, "Negative": 8},
+        [
+            {
+                "rank": 1,
+                "pain_point": "Short battery life",
+                "description": "Customers report that the battery depletes much faster than advertised, failing to last through the day.",
+                "recommended_action": "Contact the supplier to upgrade the battery cell capacity to ensure it lasts past lunchtime on a full charge.",
+            }
+        ],
+    )
+
+    summary = build_voice_summary(report)
+    word_count = len(summary.split())
+
+    assert 65 <= word_count <= 130, f"expected ~30-45s of speech, got {word_count} words: {summary!r}"
 
 
 def test_build_voice_summary_handles_zero_reviews():
