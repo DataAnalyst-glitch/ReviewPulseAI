@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS pain_points (
     verified_quote_count INTEGER NOT NULL,
     needs_manual_review INTEGER NOT NULL,
     recommended_action TEXT,
+    suggested_listing_copy TEXT,
     updated_at TEXT NOT NULL,
     PRIMARY KEY (product_id, rank)
 );
@@ -76,6 +77,7 @@ _COLUMN_MIGRATIONS = [
     ("sentiment_results", "is_demo_data", "INTEGER NOT NULL DEFAULT 0"),
     ("pain_points", "recommended_action", "TEXT"),
     ("gap_opportunities", "recommended_action", "TEXT"),
+    ("pain_points", "suggested_listing_copy", "TEXT"),
 ]
 
 
@@ -180,8 +182,8 @@ def save_pain_points(product_id: str, pain_points: List[PainPoint], conn: Option
         conn,
         "INSERT INTO pain_points "
         "(product_id, rank, pain_point, description, supporting_review_ids, supporting_quotes, "
-        "verified_quote_count, needs_manual_review, recommended_action, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "verified_quote_count, needs_manual_review, recommended_action, suggested_listing_copy, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             (
                 product_id,
@@ -193,6 +195,7 @@ def save_pain_points(product_id: str, pain_points: List[PainPoint], conn: Option
                 pp.verified_quote_count,
                 int(pp.needs_manual_review),
                 pp.recommended_action,
+                pp.suggested_listing_copy,
                 now,
             )
             for pp in pain_points
@@ -222,6 +225,7 @@ def get_pain_points(product_id: str, conn: Optional[sqlite3.Connection] = None) 
             "verified_quote_count": row["verified_quote_count"],
             "needs_manual_review": bool(row["needs_manual_review"]),
             "recommended_action": row["recommended_action"],
+            "suggested_listing_copy": row["suggested_listing_copy"],
         }
         for row in rows
     ]

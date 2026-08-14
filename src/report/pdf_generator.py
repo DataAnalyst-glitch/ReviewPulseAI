@@ -134,6 +134,16 @@ def _pain_points_section(pdf: FPDF, report: ProductReport) -> None:
             pdf.write(5, point["recommended_action"])
             pdf.ln(7)
 
+        if point.get("suggested_listing_copy"):
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_text_color(*COLOR_SEQUENTIAL)
+            pdf.set_x(MARGIN_MM + 5)
+            pdf.write(5, "Suggested Listing Copy: ")
+            pdf.set_font("Helvetica", "I", 9)
+            pdf.set_text_color(*COLOR_SECONDARY_INK)
+            pdf.write(5, f'"{point["suggested_listing_copy"]}"')
+            pdf.ln(7)
+
         pdf.ln(3)
 
 

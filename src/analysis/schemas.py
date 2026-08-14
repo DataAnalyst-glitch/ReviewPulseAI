@@ -31,6 +31,9 @@ class PainPoint(BaseModel):
     needs_manual_review: bool = False
     # Filled in by Agent D (recommendations) after this pain point is saved.
     recommended_action: Optional[str] = None
+    # Filled in alongside recommended_action, same call — a ready-to-use
+    # Amazon-style listing bullet addressing this specific pain point.
+    suggested_listing_copy: Optional[str] = None
 
 
 class PainPointBatch(BaseModel):
@@ -55,6 +58,12 @@ class PainPointRecommendation(BaseModel):
     recommended_action: str = Field(
         description="ONE short, concrete, actionable line tied to this specific pain point's evidence. "
         "If it can't be grounded in the evidence, use exactly: 'Insufficient data for a specific recommendation.'"
+    )
+    suggested_listing_copy: str = Field(
+        description="ONE ready-to-use Amazon-style product listing bullet point, under 200 characters, "
+        "benefit-focused, that addresses this specific pain point using the evidence above — not generic "
+        "marketing copy. If recommended_action is the insufficient-data fallback, use exactly: "
+        "'Insufficient data for a specific recommendation.' here too instead of inventing copy."
     )
 
 

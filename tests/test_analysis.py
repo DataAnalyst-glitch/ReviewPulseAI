@@ -2,8 +2,19 @@ import os
 
 import pytest
 
+import src.analysis as analysis_module
+from src.analysis import INSUFFICIENT_DATA, analyze_product
 from src.analysis.guardrail import verify_pain_points
-from src.analysis.schemas import GapOpportunity, GapOpportunityBatch, PainPoint, SentimentBatch, SentimentResult
+from src.analysis.schemas import (
+    GapOpportunity,
+    GapOpportunityBatch,
+    PainPoint,
+    PainPointBatch,
+    PainPointRecommendation,
+    PainPointRecommendationBatch,
+    SentimentBatch,
+    SentimentResult,
+)
 from src.analysis.storage import (
     get_connection,
     get_gap_opportunities,
@@ -168,6 +179,7 @@ def test_storage_round_trip(tmp_path):
             verified_quote_count=1,
             needs_manual_review=False,
             recommended_action="Add a size chart and an extra-small ear tip to the box.",
+            suggested_listing_copy="PERFECT FIT - Includes an extra-small ear tip so every ear gets a secure, comfortable seal.",
         )
     ]
     save_pain_points("P1", pain_points, conn=conn)
@@ -176,6 +188,7 @@ def test_storage_round_trip(tmp_path):
     assert stored[0]["pain_point"] == "Fit"
     assert stored[0]["supporting_quotes"] == ["too large"]
     assert stored[0]["recommended_action"] == "Add a size chart and an extra-small ear tip to the box."
+    assert stored[0]["suggested_listing_copy"] == "PERFECT FIT - Includes an extra-small ear tip so every ear gets a secure, comfortable seal."
 
     gap_batch = GapOpportunityBatch(
         opportunities=[
@@ -199,6 +212,69 @@ def test_storage_round_trip(tmp_path):
     conn.close()
 
 
+def test_analyze_product_maps_and_caps_suggested_listing_copy(tmp_path, monkeypatch):
+    # Mocks the LLM-calling agents so this covers analyze_product()'s own
+    # field-mapping/truncation/fallback logic without needing a live API key.
+    import src.analysis.storage as storage_module
+
+    monkeypatch.setattr(storage_module, "DB_PATH", tmp_path / "mapping_test.db")
+
+    reviews = [
+        _review("P1", "Battery dies by noon, very disappointing for the price."),
+        _review("P1", "Ear tips are way too big and keep falling out."),
+        _review("P1", "Case is fine I guess, nothing special either way."),
+    ]
+
+    def fake_sentiment(product_id, reviews):
+        return SentimentBatch(results=[SentimentResult(review_id=r.review_id, sentiment="Neutral") for r in reviews])
+
+    def fake_extraction(product_id, reviews):
+        return PainPointBatch(
+            pain_points=[
+                PainPoint(
+                    rank=1,
+                    pain_point="Short battery life",
+                    description="Battery drains quickly",
+                    supporting_review_ids=[reviews[0].review_id],
+                    supporting_quotes=["dies by noon"],
+                ),
+                PainPoint(
+                    rank=2,
+                    pain_point="Vague fit issue",
+                    description="Some fit complaints, thin evidence",
+                    supporting_review_ids=[reviews[1].review_id],
+                    supporting_quotes=["too big"],
+                ),
+            ]
+        )
+
+    long_copy = "X" * 250  # over the 200-char cap, to prove truncation actually runs
+
+    def fake_recommendations(product_id, pain_points):
+        return PainPointRecommendationBatch(
+            recommendations=[
+                PainPointRecommendation(rank=1, recommended_action="Add a bigger battery.", suggested_listing_copy=long_copy),
+                PainPointRecommendation(rank=2, recommended_action=INSUFFICIENT_DATA, suggested_listing_copy=INSUFFICIENT_DATA),
+            ]
+        )
+
+    monkeypatch.setattr(analysis_module, "run_sentiment_analysis", fake_sentiment)
+    monkeypatch.setattr(analysis_module, "run_pain_point_extraction", fake_extraction)
+    monkeypatch.setattr(analysis_module, "run_pain_point_recommendations", fake_recommendations)
+
+    result = analyze_product("P1", reviews)
+    points_by_rank = {p.rank: p for p in result["pain_points"]}
+
+    grounded = points_by_rank[1]
+    assert grounded.recommended_action == "Add a bigger battery."
+    assert len(grounded.suggested_listing_copy) <= 200
+    assert grounded.suggested_listing_copy.endswith("...")
+
+    ungrounded = points_by_rank[2]
+    assert ungrounded.recommended_action == INSUFFICIENT_DATA
+    assert ungrounded.suggested_listing_copy is None  # never shown when there's nothing to ground it in
+
+
 @pytest.mark.skipif(not os.getenv("GEMINI_API_KEY"), reason="requires a live GEMINI_API_KEY")
 def test_analyze_product_end_to_end(tmp_path, monkeypatch):
     import src.analysis.storage as storage_module
@@ -218,6 +294,9 @@ def test_analyze_product_end_to_end(tmp_path, monkeypatch):
     for point in result["pain_points"]:
         assert point.recommended_action
         assert point.recommended_action.strip() != ""
+        if point.recommended_action != INSUFFICIENT_DATA:
+            assert point.suggested_listing_copy
+            assert len(point.suggested_listing_copy) <= 200
 
 
 @pytest.mark.skipif(not os.getenv("GEMINI_API_KEY"), reason="requires a live GEMINI_API_KEY")

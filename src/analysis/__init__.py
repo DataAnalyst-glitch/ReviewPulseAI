@@ -49,9 +49,18 @@ def analyze_product(product_id: str, reviews: List[Review]) -> Dict:
 
     try:
         recommendation_batch = run_pain_point_recommendations(product_id, verified_pain_points)
-        by_rank = {r.rank: r.recommended_action for r in recommendation_batch.recommendations}
+        by_rank = {r.rank: r for r in recommendation_batch.recommendations}
         for point in verified_pain_points:
-            point.recommended_action = by_rank.get(point.rank, INSUFFICIENT_DATA)
+            rec = by_rank.get(point.rank)
+            point.recommended_action = rec.recommended_action if rec else INSUFFICIENT_DATA
+            copy = rec.suggested_listing_copy if rec else None
+            # A pain point with no groundable recommendation shouldn't show
+            # listing copy either — and defensively cap length in case the
+            # model doesn't respect the under-200-character instruction.
+            if not copy or copy == INSUFFICIENT_DATA or point.recommended_action == INSUFFICIENT_DATA:
+                point.suggested_listing_copy = None
+            else:
+                point.suggested_listing_copy = copy if len(copy) <= 200 else copy[:197].rstrip() + "..."
     except AnalysisError as exc:
         logger.warning("Agent D (recommendations) failed for %s, continuing without them: %s", product_id, exc)
 

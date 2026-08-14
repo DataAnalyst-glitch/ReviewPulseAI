@@ -41,6 +41,7 @@ def _seed(monkeypatch, tmp_path):
                 verified_quote_count=1,
                 needs_manual_review=False,
                 recommended_action="Add a battery-life disclaimer to bullet #3 and test a larger-capacity cell.",
+                suggested_listing_copy="LONG-LASTING POWER - Upgraded cell keeps you listening all day on a single charge.",
             )
         ],
     )
@@ -135,6 +136,8 @@ def test_generate_pdf_report_renders_recommendations(monkeypatch, tmp_path):
     assert "Recommended action" in text
     assert "battery-life disclaimer" in text
     assert "main image callouts" in text
+    assert "Suggested Listing Copy" in text
+    assert "LONG-LASTING POWER" in text
     # Fallback text version of the voice summary (Update Brief Addition 2)
     # must be in the PDF too — the report can't depend on audio playback.
     # (Substrings, not an exact match: multi_cell line-wraps long text with

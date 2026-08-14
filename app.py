@@ -408,6 +408,8 @@ with st.container(border=True):
                     st.markdown(f"> {quote}")
                 if point.get("recommended_action"):
                     st.markdown(f"**💡 Recommended action:** {point['recommended_action']}")
+                if point.get("suggested_listing_copy"):
+                    st.markdown(f"**📝 Suggested Listing Copy:** {point['suggested_listing_copy']}")
     else:
         st.write("No pain points identified.")
 
