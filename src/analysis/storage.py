@@ -90,7 +90,12 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
             conn.commit()
             logger.info("Migrated schema: added %s.%s", table, column)
         except sqlite3.OperationalError as exc:
-            if "duplicate column name" not in str(exc).lower():
+            message = str(exc).lower()
+            # "duplicate column name": already migrated, nothing to do.
+            # "no such table": this table isn't in play for the caller
+            # (e.g. write-time healing for one specific INSERT) — CREATE
+            # TABLE IF NOT EXISTS elsewhere is what's responsible for it.
+            if "duplicate column name" not in message and "no such table" not in message:
                 raise
 
 
@@ -106,6 +111,27 @@ def get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _executemany_healing(conn: sqlite3.Connection, sql: str, rows: list) -> None:
+    """
+    executemany() that self-heals a missing-column schema error on the
+    exact connection about to write, then retries once. A belt-and-braces
+    complement to _migrate_schema() running at connection-open time — this
+    is the version that can't be defeated by any timing/caching mystery
+    between when a connection was opened and when it's used to write,
+    since the ALTER and the retry both happen on this same connection
+    right at the point of failure.
+    """
+    try:
+        conn.executemany(sql, rows)
+    except sqlite3.OperationalError as exc:
+        if "has no column named" not in str(exc).lower():
+            raise
+        logger.warning("Self-healing schema at write time after: %s", exc)
+        _migrate_schema(conn)
+        conn.executemany(sql, rows)
+    conn.commit()
 
 
 def save_sentiment_results(
@@ -133,12 +159,12 @@ def save_sentiment_results(
             )
         )
 
-    conn.executemany(
+    _executemany_healing(
+        conn,
         "INSERT OR REPLACE INTO sentiment_results "
         "(review_id, product_id, sentiment, rating, review_text, is_demo_data, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         rows,
     )
-    conn.commit()
     logger.info("Saved %d sentiment results for %s", len(rows), product_id)
     if own_conn:
         conn.close()
@@ -150,7 +176,8 @@ def save_pain_points(product_id: str, pain_points: List[PainPoint], conn: Option
     now = _now()
 
     conn.execute("DELETE FROM pain_points WHERE product_id = ?", (product_id,))
-    conn.executemany(
+    _executemany_healing(
+        conn,
         "INSERT INTO pain_points "
         "(product_id, rank, pain_point, description, supporting_review_ids, supporting_quotes, "
         "verified_quote_count, needs_manual_review, recommended_action, updated_at) "
@@ -171,7 +198,6 @@ def save_pain_points(product_id: str, pain_points: List[PainPoint], conn: Option
             for pp in pain_points
         ],
     )
-    conn.commit()
     logger.info("Saved %d pain points for %s", len(pain_points), product_id)
     if own_conn:
         conn.close()
@@ -243,7 +269,8 @@ def save_gap_opportunities(
     now = _now()
 
     conn.execute("DELETE FROM gap_opportunities WHERE main_product_id = ?", (main_product_id,))
-    conn.executemany(
+    _executemany_healing(
+        conn,
         "INSERT INTO gap_opportunities "
         "(main_product_id, competitor_product_id, competitor_pain_point, opportunity, rationale, "
         "recommended_action, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -255,7 +282,6 @@ def save_gap_opportunities(
             for op in gap_batch.opportunities
         ],
     )
-    conn.commit()
     logger.info("Saved %d gap opportunities for %s", len(gap_batch.opportunities), main_product_id)
     if own_conn:
         conn.close()

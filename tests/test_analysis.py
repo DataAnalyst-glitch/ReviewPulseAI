@@ -96,6 +96,60 @@ def test_get_connection_migrates_old_schema_missing_recommended_action(tmp_path)
     conn.close()
 
 
+def test_write_time_healing_works_even_if_connection_time_migration_did_not(tmp_path):
+    # Isolates _executemany_healing (heals at the point of the actual
+    # write, on the exact connection about to fail) from _migrate_schema
+    # running at connection-open time, by bypassing get_connection()
+    # entirely and opening a raw sqlite3 connection instead — so the
+    # connection-open-time migration path never runs at all, and only
+    # the write-time healing inside save_pain_points can be responsible
+    # for fixing the missing column. This is the safety net for whatever
+    # caused the deployed app to still hit the missing-column error even
+    # after connection-time migration was added and (per Streamlit
+    # Cloud's logs) successfully redeployed.
+    import sqlite3
+
+    db_path = tmp_path / "old_schema_no_premigration.db"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        """
+        CREATE TABLE pain_points (
+            product_id TEXT NOT NULL,
+            rank INTEGER NOT NULL,
+            pain_point TEXT NOT NULL,
+            description TEXT NOT NULL,
+            supporting_review_ids TEXT NOT NULL,
+            supporting_quotes TEXT NOT NULL,
+            verified_quote_count INTEGER NOT NULL,
+            needs_manual_review INTEGER NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (product_id, rank)
+        )
+        """
+    )
+    conn.commit()
+
+    pain_points = [
+        PainPoint(
+            rank=1,
+            pain_point="Fit",
+            description="Ear tips too large",
+            supporting_review_ids=["abc123"],
+            supporting_quotes=["too large"],
+            verified_quote_count=1,
+            needs_manual_review=False,
+            recommended_action="Add a size chart.",
+        )
+    ]
+
+    save_pain_points("P1", pain_points, conn=conn)  # must still self-heal and not raise
+    stored = get_pain_points("P1", conn=conn)
+
+    assert stored[0]["recommended_action"] == "Add a size chart."
+    conn.close()
+
+
 def test_storage_round_trip(tmp_path):
     conn = get_connection(str(tmp_path / "test.db"))
 
