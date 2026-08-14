@@ -67,12 +67,34 @@ CREATE TABLE IF NOT EXISTS llm_usage_log (
 """
 
 
+# Columns added to tables after their CREATE TABLE was already deployed.
+# CREATE TABLE IF NOT EXISTS is a no-op against an existing table, so an
+# already-running deployment (its SQLite file predates the column) needs
+# an explicit ALTER TABLE — otherwise INSERT/executemany column-count
+# mismatches with sqlite3.OperationalError on first write after a deploy.
+_COLUMN_MIGRATIONS = [
+    ("sentiment_results", "is_demo_data", "INTEGER NOT NULL DEFAULT 0"),
+    ("pain_points", "recommended_action", "TEXT"),
+    ("gap_opportunities", "recommended_action", "TEXT"),
+]
+
+
+def _migrate_schema(conn: sqlite3.Connection) -> None:
+    for table, column, coltype in _COLUMN_MIGRATIONS:
+        existing_columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if column not in existing_columns:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
+            logger.info("Migrated schema: added %s.%s", table, column)
+    conn.commit()
+
+
 def get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
     path = Path(db_path) if db_path else DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    _migrate_schema(conn)
     return conn
 
 

@@ -47,6 +47,55 @@ def test_verify_pain_points_flags_unverifiable_quotes():
     assert verified[1].needs_manual_review is True
 
 
+def test_get_connection_migrates_old_schema_missing_recommended_action(tmp_path):
+    # Reproduces the exact bug hit on the deployed app: its SQLite file was
+    # created by code that predates the recommended_action column, so a
+    # plain CREATE TABLE IF NOT EXISTS is a no-op and the next INSERT
+    # column-count-mismatches with sqlite3.OperationalError.
+    import sqlite3
+
+    db_path = tmp_path / "old_schema.db"
+    old_conn = sqlite3.connect(db_path)
+    old_conn.execute(
+        """
+        CREATE TABLE pain_points (
+            product_id TEXT NOT NULL,
+            rank INTEGER NOT NULL,
+            pain_point TEXT NOT NULL,
+            description TEXT NOT NULL,
+            supporting_review_ids TEXT NOT NULL,
+            supporting_quotes TEXT NOT NULL,
+            verified_quote_count INTEGER NOT NULL,
+            needs_manual_review INTEGER NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (product_id, rank)
+        )
+        """
+    )
+    old_conn.commit()
+    old_conn.close()
+
+    conn = get_connection(str(db_path))
+    pain_points = [
+        PainPoint(
+            rank=1,
+            pain_point="Fit",
+            description="Ear tips too large",
+            supporting_review_ids=["abc123"],
+            supporting_quotes=["too large"],
+            verified_quote_count=1,
+            needs_manual_review=False,
+            recommended_action="Add a size chart.",
+        )
+    ]
+
+    save_pain_points("P1", pain_points, conn=conn)  # must not raise sqlite3.OperationalError
+    stored = get_pain_points("P1", conn=conn)
+
+    assert stored[0]["recommended_action"] == "Add a size chart."
+    conn.close()
+
+
 def test_storage_round_trip(tmp_path):
     conn = get_connection(str(tmp_path / "test.db"))
 
