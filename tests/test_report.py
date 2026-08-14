@@ -7,6 +7,7 @@ from src.analysis.storage import save_gap_opportunities, save_pain_points, save_
 from src.ingestion.schema import Review
 from src.report import ComparisonReport, ProductReport, build_comparison_report, build_product_report
 from src.report.pdf_generator import generate_pdf_report
+from src.report.voice_summary import build_voice_summary
 
 
 def _seed(monkeypatch, tmp_path):
@@ -134,6 +135,13 @@ def test_generate_pdf_report_renders_recommendations(monkeypatch, tmp_path):
     assert "Recommended action" in text
     assert "battery-life disclaimer" in text
     assert "main image callouts" in text
+    # Fallback text version of the voice summary (Update Brief Addition 2)
+    # must be in the PDF too — the report can't depend on audio playback.
+    # (Substrings, not an exact match: multi_cell line-wraps long text with
+    # its own newlines, which won't match pypdf's extracted line breaks.)
+    assert "Executive Summary" in text
+    assert "quick summary for MAIN" in text
+    assert "50 percent positive, 50 percent negative" in text
 
 
 def test_generate_pdf_report_handles_no_competitors(monkeypatch, tmp_path):
@@ -143,3 +151,64 @@ def test_generate_pdf_report_handles_no_competitors(monkeypatch, tmp_path):
     pdf_bytes = generate_pdf_report(report)
 
     assert pdf_bytes.startswith(b"%PDF")
+
+
+def _make_report(sentiment_counts, pain_points, total_reviews=None):
+    main = ProductReport(
+        product_id="MAIN",
+        is_demo_data=False,
+        total_reviews=total_reviews if total_reviews is not None else sum(sentiment_counts.values()),
+        sentiment_counts=sentiment_counts,
+        pain_points=pain_points,
+    )
+    return ComparisonReport(main=main, competitors=[], gap_opportunities=[])
+
+
+def test_build_voice_summary_includes_sentiment_and_top_pain_point():
+    report = _make_report(
+        {"Positive": 6, "Neutral": 1, "Negative": 8},
+        [
+            {
+                "rank": 1,
+                "pain_point": "Short battery life",
+                "recommended_action": "Update bullet #3 to set expectations honestly.",
+            }
+        ],
+    )
+
+    summary = build_voice_summary(report)
+
+    assert "MAIN" in summary
+    assert "15 reviews" in summary
+    assert "40 percent positive" in summary
+    assert "53 percent negative" in summary
+    assert "Short battery life" in summary
+    assert "Update bullet #3" in summary
+
+
+def test_build_voice_summary_omits_insufficient_data_fallback():
+    report = _make_report(
+        {"Positive": 1, "Negative": 1},
+        [{"rank": 1, "pain_point": "Vague issue", "recommended_action": "Insufficient data for a specific recommendation."}],
+    )
+
+    summary = build_voice_summary(report)
+
+    assert "Vague issue" in summary
+    assert "Insufficient data" not in summary
+
+
+def test_build_voice_summary_handles_no_pain_points():
+    report = _make_report({"Positive": 2}, [])
+
+    summary = build_voice_summary(report)
+
+    assert "No major pain points" in summary
+
+
+def test_build_voice_summary_handles_zero_reviews():
+    report = _make_report({}, [], total_reviews=0)
+
+    summary = build_voice_summary(report)
+
+    assert "No reviews were available" in summary

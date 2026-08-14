@@ -17,6 +17,7 @@ from fpdf import FPDF
 from fpdf.enums import XPos, YPos
 
 from src.report import ComparisonReport, ProductReport
+from src.report.voice_summary import build_voice_summary
 
 COLOR_GOOD = (12, 163, 12)  # status: good — #0ca30c
 COLOR_CRITICAL = (208, 59, 59)  # status: critical — #d03b3b
@@ -169,6 +170,16 @@ def _gap_opportunities_section(pdf: FPDF, report: ComparisonReport) -> None:
         pdf.ln(3)
 
 
+def _executive_summary_section(pdf: FPDF, report: ComparisonReport) -> None:
+    # Fallback text version of the Voice Output summary (Update Brief
+    # Addition 2) — the report must not depend on audio playback.
+    _section_title(pdf, "Executive Summary")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(*COLOR_SECONDARY_INK)
+    pdf.set_x(MARGIN_MM)
+    pdf.multi_cell(CONTENT_WIDTH_MM, 6, build_voice_summary(report))
+
+
 def generate_pdf_report(report: ComparisonReport) -> bytes:
     pdf = ReportPDF(orientation="P", unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -180,6 +191,7 @@ def generate_pdf_report(report: ComparisonReport) -> bytes:
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     pdf.cell(0, 6, f"Generated {generated}  |  {report.main.total_reviews} reviews analyzed", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
+    _executive_summary_section(pdf, report)
     _sentiment_section(pdf, report.main)
     _pain_points_section(pdf, report.main)
 

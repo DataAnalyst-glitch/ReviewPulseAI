@@ -8,17 +8,20 @@ for each; anything left without a CSV falls back to REVIEW_API_KEY (if set)
 or bundled demo sample data, same as the ingestion pipeline always has.
 """
 
+import json
 import time
 from pathlib import Path
 
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 
 from src.analysis import AnalysisError, analyze_product, compare_products
 from src.ingestion import IngestionError, ingest_reviews
 from src.rag import RAGError, index_reviews
 from src.report import build_comparison_report
 from src.report.pdf_generator import generate_pdf_report
+from src.report.voice_summary import build_voice_summary
 
 # Same validated palette used by the PDF export (src/report/pdf_generator.py) —
 # one color system across the whole product, not per-surface guesses.
@@ -167,6 +170,48 @@ def _save_upload(uploaded_file, product_id: str) -> str | None:
     path = UPLOAD_DIR / f"{product_id}.csv"
     path.write_bytes(uploaded_file.getvalue())
     return str(path)
+
+
+def _render_listen_button(summary_text: str) -> None:
+    """
+    Voice Output (Update Brief Addition 2) — browser-native Web Speech API
+    (speechSynthesis), no paid service, no new Python dependency. Feature-
+    detected client-side: if unsupported, the button says so instead of
+    silently doing nothing, and the rest of the app (including the visible
+    summary text right above this) works identically either way.
+    """
+    safe_text = json.dumps(summary_text)
+    html = f"""
+    <div style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; display: flex; align-items: center; gap: 0.6rem;">
+      <button id="rp-listen-btn" style="
+          background:#2a78d6; color:#fff; border:none; border-radius:8px;
+          padding:0.5rem 1rem; font-size:0.95rem; font-weight:500; cursor:pointer;">
+        🔊 Listen to Summary
+      </button>
+      <span id="rp-listen-status" style="color:#52514e; font-size:0.85rem;"></span>
+    </div>
+    <script>
+      (function() {{
+        const btn = document.getElementById('rp-listen-btn');
+        const status = document.getElementById('rp-listen-status');
+        const text = {safe_text};
+        btn.addEventListener('click', function() {{
+          if (!('speechSynthesis' in window)) {{
+            status.textContent = 'Voice playback is not supported in this browser.';
+            return;
+          }}
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.rate = 1.0;
+          status.textContent = 'Playing...';
+          utterance.onend = function() {{ status.textContent = 'Done.'; }};
+          utterance.onerror = function() {{ status.textContent = 'Playback unavailable right now.'; }};
+          window.speechSynthesis.speak(utterance);
+        }});
+      }})();
+    </script>
+    """
+    components.html(html, height=45)
 
 
 with st.sidebar:
@@ -348,6 +393,11 @@ if report.competitors:
                 st.write(f"Sentiment: {competitor.sentiment_counts}")
                 for point in competitor.pain_points:
                     st.write(f"{point['rank']}. {point['pain_point']} — {point['description']}")
+
+st.subheader("Voice Summary")
+voice_summary = build_voice_summary(report)
+st.info(voice_summary)
+_render_listen_button(voice_summary)
 
 st.subheader("Export")
 pdf_bytes = generate_pdf_report(report)
