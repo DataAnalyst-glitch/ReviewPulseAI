@@ -110,3 +110,13 @@ Start with **Module 1 (Data Ingestion)** using the fallback-safe design from Sec
 **Addition 2 — Voice Input & Voice Output (Module 4, "wow" differentiator, never blocks core text-input pipeline).** Priority order given: (1) Recommendation Agent, (2) Voice Output (spoken 3-point summary), (3) Voice Input (mic), do last and only if time allows — ship 1+2 and mark 3 "coming soon" if tight on time.
 
 **Status:** Voice Output shipped (`app.py` "Listen to Summary" button + `src/report/voice_summary.py`, verified live). Voice Input marked "coming soon" in the sidebar per this brief's own explicit fallback — evaluated feasible dependency-wise (`streamlit-mic-recorder` installs cleanly) but deferred: transcription would depend on an undocumented free Google STT endpoint (reliability risk for a paying client) and there's no way to verify real microphone capture end-to-end in an automated/headless environment with no hardware mic. User confirmed this call when asked.
+
+---
+
+## 8. Business Gate — Demo Mode
+
+> Given after the public Streamlit Cloud link was live and shared as a free demo. The actual service is sold per-report (Fiverr/Upwork) — the public link needed to stop being usable as a free substitute for that.
+
+**`DEMO_MODE` env var (`app.py`, UI-layer only — ingestion/RAG/analysis/report code is unchanged and unaware this flag exists).** When `true`: only the bundled sample products (`DEMO_PRODUCTS`, discovered from `data/sample_reviews/*.csv` at runtime, not hardcoded) can be analyzed; any other product ID or an uploaded CSV (main or competitor) shows a friendly "this is a paid service" message and stops before running the pipeline; CSV upload widgets are also disabled outright. Unset (default, including local `.env`) → full functionality, for running real client orders.
+
+**Deployed:** Streamlit Cloud Secrets has `DEMO_MODE = "true"` (public link, demo-only). Local `.env` leaves it unset (full functionality for paid orders). Both modes verified locally in-browser before pushing: full mode ran a non-demo product ID through the normal pipeline (and failed with the ordinary `IngestionError`, not a gate message); demo mode blocked both a non-demo main ID and a non-demo competitor ID with the gate message, and ran the default demo pair normally.

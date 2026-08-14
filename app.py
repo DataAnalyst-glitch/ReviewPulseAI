@@ -9,6 +9,7 @@ or bundled demo sample data, same as the ingestion pipeline always has.
 """
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -34,7 +35,23 @@ SENTIMENT_ORDER = ["Positive", "Neutral", "Negative"]
 SENTIMENT_COLOR = {"Positive": COLOR_GOOD, "Neutral": COLOR_NEUTRAL, "Negative": COLOR_CRITICAL}
 
 UPLOAD_DIR = Path("data") / "raw" / "uploads"
-DEMO_PRODUCTS = ("DEMO-EARBUDS-A", "DEMO-EARBUDS-B")
+
+# Discovered from disk, not hardcoded, so any product added to
+# data/sample_reviews/ is automatically both the form's default and (in
+# demo mode) the full allowlist — one source of truth, no drift.
+DEMO_PRODUCTS = tuple(sorted(p.stem for p in (Path("data") / "sample_reviews").glob("*.csv")))
+
+# Business gate (not a security boundary): on the public Streamlit Cloud
+# deployment, DEMO_MODE=true restricts analysis to the bundled sample
+# products so visitors can't run the paid pipeline on their own data for
+# free. Locally, leave DEMO_MODE unset for full functionality on real
+# client orders. UI-layer only — ingestion/analysis/report code is
+# unchanged and has no idea this flag exists.
+DEMO_MODE = os.getenv("DEMO_MODE", "").strip().lower() in {"1", "true", "yes"}
+DEMO_CONTACT_MESSAGE = (
+    "To analyze your own product reviews, this is a paid service — "
+    "contact **[your-email@example.com]** to order a custom report."
+)
 
 st.set_page_config(page_title="ReviewPulse AI", page_icon="📊", layout="wide")
 
@@ -216,28 +233,35 @@ def _render_listen_button(summary_text: str) -> None:
 
 with st.sidebar:
     st.markdown("### Analyze a product")
-    st.caption(
-        f"No CSV or product data handy? Try the built-in demo pair — "
-        f"`{DEMO_PRODUCTS[0]}` vs `{DEMO_PRODUCTS[1]}` — already filled in below."
-    )
+    demo_list_str = " vs ".join(f"`{pid}`" for pid in DEMO_PRODUCTS) if DEMO_PRODUCTS else "the bundled samples"
+    st.caption(f"No CSV or product data handy? Try the built-in demo pair — {demo_list_str} — already filled in below.")
+
+    if DEMO_MODE:
+        st.info(f"🔒 **Demo mode** — only the sample products above can be analyzed here. {DEMO_CONTACT_MESSAGE}")
 
     with st.form("analyze_form"):
         st.markdown("**Your product**")
         main_id = st.text_input(
-            "Product ID or ASIN", value=DEMO_PRODUCTS[0], help="A short identifier you choose — used to label results and match an uploaded CSV."
+            "Product ID or ASIN",
+            value=DEMO_PRODUCTS[0] if DEMO_PRODUCTS else "",
+            help="A short identifier you choose — used to label results and match an uploaded CSV.",
         )
         st.caption("🎤 Voice input — coming soon")
         main_csv = st.file_uploader(
-            "Reviews CSV (optional)", type="csv", key="main_csv",
-            help="One row per review with a text column (review_text/review/text/body). Leave empty to use demo data.",
+            "Reviews CSV (optional)", type="csv", key="main_csv", disabled=DEMO_MODE,
+            help="Disabled in demo mode — this is a paid service for your own data."
+            if DEMO_MODE else
+            "One row per review with a text column (review_text/review/text/body). Leave empty to use demo data.",
         )
 
         st.markdown("**Competitors** (up to 3, optional)")
         competitor_inputs = []
         for i in range(3):
-            default = DEMO_PRODUCTS[1] if i == 0 else ""
+            default = DEMO_PRODUCTS[1] if i == 0 and len(DEMO_PRODUCTS) > 1 else ""
             cid = st.text_input(f"Competitor {i + 1} ID", value=default, key=f"comp_id_{i}")
-            ccsv = st.file_uploader(f"Competitor {i + 1} CSV (optional)", type="csv", key=f"comp_csv_{i}")
+            ccsv = st.file_uploader(
+                f"Competitor {i + 1} CSV (optional)", type="csv", key=f"comp_csv_{i}", disabled=DEMO_MODE,
+            )
             competitor_inputs.append((cid.strip(), ccsv))
 
         submitted = st.form_submit_button("Analyze", type="primary", width="stretch")
@@ -261,6 +285,13 @@ if submitted:
 
     main_id = main_id.strip()
     competitors = [(cid, csv) for cid, csv in competitor_inputs if cid]
+
+    if DEMO_MODE:
+        attempted_ids = [main_id] + [cid for cid, _ in competitors]
+        attempted_csvs = [main_csv] + [csv for _, csv in competitors]
+        if any(pid not in DEMO_PRODUCTS for pid in attempted_ids) or any(csv is not None for csv in attempted_csvs):
+            st.warning(f"This is a live demo using sample data. {DEMO_CONTACT_MESSAGE}")
+            st.stop()
 
     seen_ids = {main_id}
     deduped_competitors = []
