@@ -414,9 +414,91 @@ with st.container(border=True):
     else:
         st.write("No pain points identified.")
 
+with st.container(border=True):
+    st.subheader("Statistical Accuracy Check")
+    st.caption(
+        "📐 Statistical (pandas), not AI-generated — cross-checks each review's star rating against the AI's "
+        "sentiment label, independent of the quote-verification check above."
+    )
+    if not main.has_rating_data:
+        st.info("No star-rating data available for this product — skipping the rating-based accuracy check.")
+    elif main.sentiment_mismatches:
+        st.warning(f"{len(main.sentiment_mismatches)} review(s) flagged: star rating and AI sentiment disagree.")
+        st.dataframe(
+            [
+                {
+                    "Rating": f"{row['rating']:.0f} stars",
+                    "AI sentiment": row["sentiment"],
+                    "Review": row["review_text"],
+                    "Flag": row["mismatch_reason"],
+                }
+                for row in main.sentiment_mismatches
+            ],
+            hide_index=True,
+            width="stretch",
+        )
+    else:
+        st.success("No sentiment mismatches found — star ratings and AI sentiment agree across all reviews.")
+
+with st.container(border=True):
+    st.subheader("Review Timeline")
+    st.caption("📐 Statistical (pandas), not AI-generated — pain-point mention frequency over time, a proxy signal since sales/demographic data isn't available from reviews.")
+    if not main.pain_point_timeline:
+        st.info("Not enough review-date data to build a timeline for this product.")
+    else:
+        timeline_colors = [COLOR_SEQUENTIAL, "#c9791c", "#7c4fd6", COLOR_NEUTRAL]
+        pain_point_order = [p["pain_point"] for p in main.pain_points]
+        fig3 = go.Figure()
+        for i, pain_point in enumerate(pain_point_order):
+            points = [row for row in main.pain_point_timeline if row["pain_point"] == pain_point]
+            if not points:
+                continue
+            fig3.add_trace(
+                go.Scatter(
+                    x=[row["period"] for row in points],
+                    y=[row["count"] for row in points],
+                    mode="lines+markers",
+                    name=pain_point,
+                    line=dict(color=timeline_colors[i % len(timeline_colors)], width=2),
+                    marker=dict(size=7),
+                )
+            )
+        fig3.update_layout(
+            xaxis_title="Week", yaxis_title="Mentions", margin=dict(t=10, b=10, l=10, r=10), height=280,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        )
+        st.plotly_chart(fig3, width="stretch")
+
+        for row in main.pain_point_trend:
+            trend_icon = {"increasing": "📈", "new/rising": "📈", "decreasing": "📉", "steady": "➡️"}.get(row["trend"], "")
+            st.caption(
+                f"{trend_icon} **{row['pain_point']}**: {row['earlier_count']} mention(s) earlier vs "
+                f"{row['later_count']} mention(s) later — {row['trend']}."
+            )
+
 if report.competitors:
     with st.container(border=True):
+        st.subheader("Statistical Comparison")
+        st.caption("📐 Statistical (pandas groupby), not AI-generated — hard numbers alongside the AI-generated gap opportunities below.")
+        st.dataframe(
+            [
+                {
+                    "Product": row["product_id"],
+                    "Reviews": row["review_count"],
+                    "Avg rating": f"{row['avg_rating']:.2f}" if row["avg_rating"] is not None else "N/A",
+                    "Positive %": f"{row['positive_pct']:.0f}%",
+                    "Neutral %": f"{row['neutral_pct']:.0f}%",
+                    "Negative %": f"{row['negative_pct']:.0f}%",
+                }
+                for row in report.comparison_table
+            ],
+            hide_index=True,
+            width="stretch",
+        )
+
+    with st.container(border=True):
         st.subheader("Feature Gap Opportunities")
+        st.caption("🤖 AI-generated — interpreted opportunities from the LLM analysis, complementing the statistical comparison above.")
         if report.gap_opportunities:
             st.dataframe(report.gap_opportunities, hide_index=True, width="stretch")
         else:

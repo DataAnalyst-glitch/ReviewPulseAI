@@ -157,8 +157,117 @@ def _pain_points_section(pdf: FPDF, report: ProductReport) -> None:
         pdf.ln(3)
 
 
+def _sentiment_mismatch_section(pdf: FPDF, report: ProductReport) -> None:
+    _section_title(pdf, f"Statistical Accuracy Check - {report.product_id}")
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(*COLOR_SECONDARY_INK)
+    pdf.multi_cell(
+        CONTENT_WIDTH_MM, 4.5,
+        "Statistical (pandas), not AI-generated - cross-checks star rating against AI sentiment, "
+        "independent of the quote-verification check above.",
+    )
+
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(*COLOR_SECONDARY_INK)
+    if not report.has_rating_data:
+        pdf.cell(0, 6, "No star-rating data available - accuracy check skipped.", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.ln(3)
+        return
+    if not report.sentiment_mismatches:
+        pdf.cell(0, 6, "No sentiment mismatches found - star ratings and AI sentiment agree.", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.ln(3)
+        return
+
+    for row in report.sentiment_mismatches:
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(*COLOR_CRITICAL)
+        pdf.write(5, f"{row['rating']:.0f}-star rated {row['sentiment']}: ")
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(*COLOR_SECONDARY_INK)
+        snippet = row["review_text"][:120] + ("..." if len(row["review_text"]) > 120 else "")
+        pdf.write(5, f'"{snippet}"')
+        pdf.ln(6)
+    pdf.ln(3)
+
+
+def _timeline_trend_section(pdf: FPDF, report: ProductReport) -> None:
+    _section_title(pdf, f"Review Timeline - {report.product_id}")
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(*COLOR_SECONDARY_INK)
+    pdf.multi_cell(
+        CONTENT_WIDTH_MM, 4.5,
+        "Statistical (pandas), not AI-generated - pain-point mention frequency over time, a proxy signal "
+        "since sales/demographic data isn't available from reviews.",
+    )
+
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(*COLOR_SECONDARY_INK)
+    if not report.pain_point_trend:
+        pdf.cell(0, 6, "Not enough review-date data to build a timeline.", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.ln(3)
+        return
+
+    col_widths = [70, 40, 40, 30]
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_text_color(*COLOR_PRIMARY_INK)
+    for w, h in zip(col_widths, ["Pain Point", "Earlier period", "Later period", "Trend"]):
+        pdf.cell(w, 7, h, border="B")
+    pdf.ln(7)
+
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(*COLOR_SECONDARY_INK)
+    for row in report.pain_point_trend:
+        values = [row["pain_point"], str(row["earlier_count"]), str(row["later_count"]), row["trend"]]
+        for w, v in zip(col_widths, values):
+            pdf.cell(w, 6, v, border=0)
+        pdf.ln(6)
+    pdf.ln(3)
+
+
+def _comparison_table_section(pdf: FPDF, report: ComparisonReport) -> None:
+    _section_title(pdf, "Statistical Comparison")
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(*COLOR_SECONDARY_INK)
+    pdf.multi_cell(
+        CONTENT_WIDTH_MM, 4.5,
+        "Statistical (pandas groupby), not AI-generated - hard numbers alongside the AI-generated "
+        "gap opportunities below.",
+    )
+
+    if not report.comparison_table:
+        pdf.set_font("Helvetica", "I", 10)
+        pdf.cell(0, 6, "Not enough data for a statistical comparison.", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.ln(3)
+        return
+
+    col_widths = [45, 25, 25, 25, 25, 25]
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_text_color(*COLOR_PRIMARY_INK)
+    for w, h in zip(col_widths, ["Product", "Reviews", "Avg Rating", "Positive %", "Neutral %", "Negative %"]):
+        pdf.cell(w, 7, h, border="B")
+    pdf.ln(7)
+
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(*COLOR_SECONDARY_INK)
+    for row in report.comparison_table:
+        avg_rating = f"{row['avg_rating']:.2f}" if row.get("avg_rating") is not None else "N/A"
+        values = [
+            row["product_id"], str(row["review_count"]), avg_rating,
+            f"{row['positive_pct']:.0f}%", f"{row['neutral_pct']:.0f}%", f"{row['negative_pct']:.0f}%",
+        ]
+        for w, v in zip(col_widths, values):
+            pdf.cell(w, 6, v, border=0)
+        pdf.ln(6)
+    pdf.ln(3)
+
+
 def _gap_opportunities_section(pdf: FPDF, report: ComparisonReport) -> None:
     _section_title(pdf, "Feature Gap Opportunities")
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(*COLOR_SECONDARY_INK)
+    pdf.multi_cell(CONTENT_WIDTH_MM, 4.5, "AI-generated - interpreted opportunities, complementing the statistical comparison above.")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(*COLOR_SECONDARY_INK)
     if not report.gap_opportunities:
         pdf.set_font("Helvetica", "I", 10)
         pdf.set_text_color(*COLOR_SECONDARY_INK)
@@ -215,14 +324,18 @@ def generate_pdf_report(report: ComparisonReport) -> bytes:
     _executive_summary_section(pdf, report)
     _sentiment_section(pdf, report.main)
     _pain_points_section(pdf, report.main)
+    _sentiment_mismatch_section(pdf, report.main)
+    _timeline_trend_section(pdf, report.main)
 
     for competitor in report.competitors:
         pdf.add_page()
         _sentiment_section(pdf, competitor)
         _pain_points_section(pdf, competitor)
+        _sentiment_mismatch_section(pdf, competitor)
 
     if report.competitors:
         pdf.add_page()
+        _comparison_table_section(pdf, report)
         _gap_opportunities_section(pdf, report)
 
     return bytes(pdf.output())

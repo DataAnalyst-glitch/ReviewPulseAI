@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS sentiment_results (
     sentiment TEXT NOT NULL,
     rating REAL,
     review_text TEXT NOT NULL,
+    review_date TEXT,
     is_demo_data INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL
 );
@@ -78,6 +79,7 @@ _COLUMN_MIGRATIONS = [
     ("pain_points", "recommended_action", "TEXT"),
     ("gap_opportunities", "recommended_action", "TEXT"),
     ("pain_points", "suggested_listing_copy", "TEXT"),
+    ("sentiment_results", "review_date", "TEXT"),
 ]
 
 
@@ -156,6 +158,7 @@ def save_sentiment_results(
                 result.sentiment,
                 review.rating,
                 review.review_text,
+                review.review_date,
                 int(review.is_demo_data),
                 now,
             )
@@ -164,7 +167,8 @@ def save_sentiment_results(
     _executemany_healing(
         conn,
         "INSERT OR REPLACE INTO sentiment_results "
-        "(review_id, product_id, sentiment, rating, review_text, is_demo_data, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "(review_id, product_id, sentiment, rating, review_text, review_date, is_demo_data, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         rows,
     )
     logger.info("Saved %d sentiment results for %s", len(rows), product_id)
@@ -250,6 +254,26 @@ def get_product_sentiment(product_id: str, conn: Optional[sqlite3.Connection] = 
         "total": sum(counts.values()),
         "is_demo_data": bool(demo_row["is_demo_data"]) if demo_row else False,
     }
+
+
+def get_sentiment_details(product_id: str, conn: Optional[sqlite3.Connection] = None) -> List[Dict]:
+    """
+    Per-review rows (not just aggregate counts) — the raw material the
+    pandas statistics layer (src/analysis/stats.py) needs for the rating
+    cross-check, comparison table, and pain-point timeline. Kept separate
+    from get_product_sentiment() (which only needs counts) so callers that
+    don't need per-review detail don't pay for it.
+    """
+    own_conn = conn is None
+    conn = conn or get_connection()
+    rows = conn.execute(
+        "SELECT review_id, sentiment, rating, review_text, review_date, is_demo_data "
+        "FROM sentiment_results WHERE product_id = ?",
+        (product_id,),
+    ).fetchall()
+    if own_conn:
+        conn.close()
+    return [dict(row) for row in rows]
 
 
 def get_gap_opportunities(main_product_id: str, conn: Optional[sqlite3.Connection] = None) -> List[Dict]:

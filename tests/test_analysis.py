@@ -21,6 +21,7 @@ from src.analysis.storage import (
     get_connection,
     get_gap_opportunities,
     get_pain_points,
+    get_sentiment_details,
     log_llm_usage,
     save_gap_opportunities,
     save_pain_points,
@@ -166,10 +167,17 @@ def test_write_time_healing_works_even_if_connection_time_migration_did_not(tmp_
 def test_storage_round_trip(tmp_path):
     conn = get_connection(str(tmp_path / "test.db"))
 
-    reviews = [_review("P1", "Great sound quality overall.")]
+    reviews = [Review(product_id="P1", review_text="Great sound quality overall.", rating=5.0, review_date="2026-01-15")]
     sentiment_batch = SentimentBatch(results=[SentimentResult(review_id=reviews[0].review_id, sentiment="Positive")])
     save_sentiment_results("P1", sentiment_batch, reviews, conn=conn)
     assert conn.execute("SELECT COUNT(*) FROM sentiment_results").fetchone()[0] == 1
+
+    details = get_sentiment_details("P1", conn=conn)
+    assert len(details) == 1
+    assert details[0]["review_id"] == reviews[0].review_id
+    assert details[0]["sentiment"] == "Positive"
+    assert details[0]["rating"] == 5.0
+    assert details[0]["review_date"] == "2026-01-15"
 
     pain_points = [
         PainPoint(

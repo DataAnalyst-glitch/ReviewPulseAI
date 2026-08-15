@@ -16,8 +16,12 @@ def _seed(monkeypatch, tmp_path):
     monkeypatch.setattr(storage_module, "DB_PATH", tmp_path / "test.db")
 
     main_reviews = [
-        Review(product_id="MAIN", review_text="Battery dies fast, very disappointing.", rating=2.0, is_demo_data=True),
-        Review(product_id="MAIN", review_text="Sound quality is excellent for the price.", rating=5.0, is_demo_data=True),
+        Review(product_id="MAIN", review_text="Battery dies fast, very disappointing.", rating=2.0, review_date="2026-01-01", is_demo_data=True),
+        Review(product_id="MAIN", review_text="Sound quality is excellent for the price.", rating=5.0, review_date="2026-01-02", is_demo_data=True),
+        # Rating/sentiment mismatch fixture: 5 stars classified Negative - the statistical accuracy check should flag this.
+        Review(product_id="MAIN", review_text="Five stars, but the AI mislabeled this as negative.", rating=5.0, review_date="2026-01-03", is_demo_data=True),
+        # A second Battery life mention, 3 weeks later, so the timeline has 2 distinct periods to bucket into.
+        Review(product_id="MAIN", review_text="Battery drains within hours, unacceptable for this price.", rating=1.0, review_date="2026-01-22", is_demo_data=True),
     ]
     save_sentiment_results(
         "MAIN",
@@ -25,6 +29,8 @@ def _seed(monkeypatch, tmp_path):
             results=[
                 SentimentResult(review_id=main_reviews[0].review_id, sentiment="Negative"),
                 SentimentResult(review_id=main_reviews[1].review_id, sentiment="Positive"),
+                SentimentResult(review_id=main_reviews[2].review_id, sentiment="Negative"),
+                SentimentResult(review_id=main_reviews[3].review_id, sentiment="Negative"),
             ]
         ),
         main_reviews,
@@ -36,7 +42,7 @@ def _seed(monkeypatch, tmp_path):
                 rank=1,
                 pain_point="Battery life",
                 description="Battery drains quickly",
-                supporting_review_ids=[main_reviews[0].review_id],
+                supporting_review_ids=[main_reviews[0].review_id, main_reviews[3].review_id],
                 supporting_quotes=["Battery dies fast"],
                 verified_quote_count=1,
                 needs_manual_review=False,
@@ -46,7 +52,7 @@ def _seed(monkeypatch, tmp_path):
         ],
     )
 
-    comp_reviews = [Review(product_id="COMP", review_text="Ear tips fall out constantly.", rating=2.0)]
+    comp_reviews = [Review(product_id="COMP", review_text="Ear tips fall out constantly.", rating=2.0, review_date="2026-01-10")]
     save_sentiment_results(
         "COMP",
         SentimentBatch(results=[SentimentResult(review_id=comp_reviews[0].review_id, sentiment="Negative")]),
@@ -91,10 +97,19 @@ def test_build_product_report(monkeypatch, tmp_path):
     assert isinstance(report, ProductReport)
     assert report.product_id == "MAIN"
     assert report.is_demo_data is True
-    assert report.total_reviews == 2
-    assert report.sentiment_counts == {"Negative": 1, "Positive": 1}
+    assert report.total_reviews == 4
+    assert report.sentiment_counts == {"Negative": 3, "Positive": 1}
     assert len(report.pain_points) == 1
     assert report.pain_points[0]["pain_point"] == "Battery life"
+
+    # Statistical layer (src/analysis/stats.py) - pandas, not AI.
+    assert report.has_rating_data is True
+    assert report.avg_rating == pytest.approx(3.25)
+    assert len(report.sentiment_mismatches) == 1
+    assert report.sentiment_mismatches[0]["review_text"].startswith("Five stars")
+    assert len(report.pain_point_timeline) == 2  # two distinct weeks
+    assert report.pain_point_trend
+    assert report.pain_point_trend[0]["pain_point"] == "Battery life"
 
 
 def test_build_comparison_report(monkeypatch, tmp_path):
@@ -108,6 +123,11 @@ def test_build_comparison_report(monkeypatch, tmp_path):
     assert report.competitors[0].product_id == "COMP"
     assert len(report.gap_opportunities) == 1
     assert report.gap_opportunities[0]["competitor_product_id"] == "COMP"
+
+    # Statistical comparison table (pandas groupby) - "hard numbers" alongside gap_opportunities.
+    assert [row["product_id"] for row in report.comparison_table] == ["MAIN", "COMP"]
+    assert report.comparison_table[0]["review_count"] == 4
+    assert report.comparison_table[1]["review_count"] == 1
 
 
 def test_generate_pdf_report_produces_valid_pdf_bytes(monkeypatch, tmp_path):
@@ -144,11 +164,21 @@ def test_generate_pdf_report_renders_recommendations(monkeypatch, tmp_path):
     # its own newlines, which won't match pypdf's extracted line breaks.)
     assert "Executive Summary" in text
     assert "quick summary for MAIN" in text
-    assert "50 percent positive" in text
-    assert "50 percent negative" in text
+    assert "25 percent positive" in text
+    assert "75 percent negative" in text
     # Trust/accuracy disclaimer must appear on every page's footer.
     assert "customer review text only" in text
     assert "does not incorporate sales volume, pricing, or market trend data" in text
+    # Statistical accuracy check (pandas rating-vs-sentiment cross-check).
+    assert "Statistical Accuracy Check" in text
+    assert "5-star rated Negative" in text
+    assert "Five stars, but the AI mislabeled" in text
+    # Review timeline (pandas, pain-point mentions over time).
+    assert "Review Timeline" in text
+    assert "Battery life" in text
+    # Statistical comparison table (pandas groupby, distinct from AI gap opportunities).
+    assert "Statistical Comparison" in text
+    assert "not AI-generated" in text
 
 
 def test_disclaimer_text_includes_review_count():
