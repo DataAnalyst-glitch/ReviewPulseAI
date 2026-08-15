@@ -53,6 +53,13 @@ DEMO_CONTACT_MESSAGE = (
     "contact **[your-email@example.com]** to order a custom report."
 )
 
+# Access-code unlock (paying clients running the live deployment directly,
+# without the operator running it locally for them). Codes live in Streamlit
+# Secrets / env as a simple comma-separated list — no DB, no expiry, per the
+# brief's "keep this simple for now". Session-only: st.session_state resets
+# per browser session, so an unlock never becomes a permanent public bypass.
+ACCESS_CODES = {code.strip() for code in os.getenv("ACCESS_CODES", "").split(",") if code.strip()}
+
 st.set_page_config(page_title="ReviewPulse AI", page_icon="📊", layout="wide")
 
 st.markdown(
@@ -233,10 +240,32 @@ def _render_listen_button(summary_text: str) -> None:
 
 with st.sidebar:
     st.markdown("### Analyze a product")
+
+    # Only relevant when DEMO_MODE is on — locally (DEMO_MODE unset) the app
+    # is already fully unlocked, so this stays hidden and nothing changes.
+    if DEMO_MODE and not st.session_state.get("access_unlocked", False):
+        entered_code = st.text_input(
+            "Have an access code? Enter it here to unlock full analysis",
+            type="password",
+            key="access_code_input",
+        )
+        if entered_code.strip():
+            if entered_code.strip() in ACCESS_CODES:
+                st.session_state["access_unlocked"] = True
+                st.rerun()
+            else:
+                st.error("Invalid access code.")
+
+    unlocked = st.session_state.get("access_unlocked", False)
+    effective_demo_mode = DEMO_MODE and not unlocked
+
+    if DEMO_MODE and unlocked:
+        st.success("🔓 Access code accepted — full analysis unlocked for this session.")
+
     demo_list_str = " vs ".join(f"`{pid}`" for pid in DEMO_PRODUCTS) if DEMO_PRODUCTS else "the bundled samples"
     st.caption(f"No CSV or product data handy? Try the built-in demo pair — {demo_list_str} — already filled in below.")
 
-    if DEMO_MODE:
+    if effective_demo_mode:
         st.info(f"🔒 **Demo mode** — only the sample products above can be analyzed here. {DEMO_CONTACT_MESSAGE}")
 
     with st.form("analyze_form"):
@@ -248,9 +277,9 @@ with st.sidebar:
         )
         st.caption("🎤 Voice input — coming soon")
         main_csv = st.file_uploader(
-            "Reviews CSV (optional)", type="csv", key="main_csv", disabled=DEMO_MODE,
+            "Reviews CSV (optional)", type="csv", key="main_csv", disabled=effective_demo_mode,
             help="Disabled in demo mode — this is a paid service for your own data."
-            if DEMO_MODE else
+            if effective_demo_mode else
             "One row per review with a text column (review_text/review/text/body). Leave empty to use demo data.",
         )
 
@@ -260,7 +289,7 @@ with st.sidebar:
             default = DEMO_PRODUCTS[1] if i == 0 and len(DEMO_PRODUCTS) > 1 else ""
             cid = st.text_input(f"Competitor {i + 1} ID", value=default, key=f"comp_id_{i}")
             ccsv = st.file_uploader(
-                f"Competitor {i + 1} CSV (optional)", type="csv", key=f"comp_csv_{i}", disabled=DEMO_MODE,
+                f"Competitor {i + 1} CSV (optional)", type="csv", key=f"comp_csv_{i}", disabled=effective_demo_mode,
             )
             competitor_inputs.append((cid.strip(), ccsv))
 
@@ -286,7 +315,7 @@ if submitted:
     main_id = main_id.strip()
     competitors = [(cid, csv) for cid, csv in competitor_inputs if cid]
 
-    if DEMO_MODE:
+    if effective_demo_mode:
         attempted_ids = [main_id] + [cid for cid, _ in competitors]
         attempted_csvs = [main_csv] + [csv for _, csv in competitors]
         if any(pid not in DEMO_PRODUCTS for pid in attempted_ids) or any(csv is not None for csv in attempted_csvs):
